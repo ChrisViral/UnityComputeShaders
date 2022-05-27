@@ -3,22 +3,22 @@
 namespace UnityComputeShaders
 {
     [RequireComponent(typeof(Renderer))]
-    public class Challenge1 : MonoBehaviour
+    public class AssignTexture : MonoBehaviour
     {
-        private const string SQUARE_KERNEL = "Square";
+        private const string KERNEL = "CSMain";
 
-        private static readonly int OutputID            = Shader.PropertyToID("output");
-        private static readonly int TextureResolutionID = Shader.PropertyToID("textureResolution");
-        private static readonly int MainTexID           = Shader.PropertyToID("_MainTex");
+        private static readonly int OutputID  = Shader.PropertyToID("output");
+        private static readonly int MainTexID = Shader.PropertyToID("_MainTex");
 
         [SerializeField]
         private ComputeShader shader;
         [SerializeField]
-        private int textureResolution = 1024;
+        private int textureResolution = 256;
 
         private new Renderer renderer;
         private RenderTexture outputTexture;
         private int kernelHandle;
+        private int side;
 
         private void Start()
         {
@@ -30,7 +30,7 @@ namespace UnityComputeShaders
 
             this.renderer = GetComponent<Renderer>();
             this.renderer.enabled = true;
-            this.shader.SetInt(TextureResolutionID, this.textureResolution);
+
             InitShader();
         }
 
@@ -39,19 +39,27 @@ namespace UnityComputeShaders
             this.outputTexture.Release();
         }
 
-        private void InitShader()
+        private void Update()
         {
-            this.kernelHandle = this.shader.FindKernel(SQUARE_KERNEL);
-            this.shader.SetTexture(this.kernelHandle, OutputID, this.outputTexture);
-            this.renderer.material.SetTexture(MainTexID, this.outputTexture);
+            if (!Input.GetKeyDown(KeyCode.U)) return;
+
             DispatchShader();
         }
 
-        private void DispatchShader()
+        private void InitShader()
         {
-            int side = this.textureResolution / 8;
-            this.shader.Dispatch(this.kernelHandle, side, side, 1);
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
+            this.shader.SetTexture(this.kernelHandle, OutputID, this.outputTexture);
+            this.renderer.material.SetTexture(MainTexID, this.outputTexture);
+            this.side = this.textureResolution / 8;
+            DispatchShader(this.textureResolution / 16);
+        }
+
+        private void DispatchShader() => DispatchShader(this.side);
+
+        private void DispatchShader(int threads)
+        {
+            this.shader.Dispatch(this.kernelHandle, threads, threads, 1);
         }
     }
 }
-

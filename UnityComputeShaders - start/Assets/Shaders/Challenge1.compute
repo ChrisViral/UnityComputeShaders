@@ -3,19 +3,23 @@
 
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float4> Result;
+RWTexture2D<float4> output;
+int textureResolution;
 //Create a float4 to hold the rectangle that defines the square
 
 //Return 1 if pt is in the rect parameter and 0 otherwise
-float inSquare( float2 pt, float4 rect ){
-    return 0.0;
+float InSquare(float2 pos, const float2 center, const float4 rect)
+{
+    pos -= center;
+    const int x = step(rect.x, pos.x) - step(rect.y, pos.x);
+    const int y = step(rect.z, pos.y) - step(rect.w, pos.y);
+    return x * y;
 }
 
 [numthreads(8,8,1)]
 void Square (uint3 id : SV_DispatchThreadID)
 {
-	//Call the inSquare function to set res
-    float res = 0;
-
-    Result[id.xy] = float4(0.0, 0.0, res, 1.0);
+    const int halfRes = textureResolution / 2;
+    float inSquare = InSquare(id.xy, halfRes, float4(-0.25, 0.25, -0.25, 0.25) * halfRes);
+    output[id.xy] = float4(0, 0, inSquare, 1);
 }
