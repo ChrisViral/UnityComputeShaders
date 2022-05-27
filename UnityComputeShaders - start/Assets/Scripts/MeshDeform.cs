@@ -1,82 +1,83 @@
 ﻿using UnityEngine;
-using System.Collections;
 
-
-public class MeshDeform : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public ComputeShader shader;
-    [Range(0.5f, 2.0f)]
-	public float radius;
-	
-    int kernelHandle;
-    Mesh mesh;
-    
-    // Use this for initialization
-    void Start()
+    public class MeshDeform : MonoBehaviour
     {
+        public ComputeShader shader;
+        [Range(0.5f, 2.0f)]
+        public float radius;
+
+        private int kernelHandle;
+        private Mesh mesh;
     
-        if (InitData())
+        // Use this for initialization
+        private void Start()
         {
-            InitShader();
-        }
-    }
-
-    private bool InitData()
-    {
-        kernelHandle = shader.FindKernel("CSMain");
-
-        MeshFilter mf = GetComponent<MeshFilter>();
-
-        if (mf == null)
-        {
-            Debug.Log("No MeshFilter found");
-            return false;
+    
+            if (InitData())
+            {
+                InitShader();
+            }
         }
 
-        InitVertexArrays(mf.mesh);
-        InitGPUBuffers();
-
-        mesh = mf.mesh;
-
-        return true;
-    }
-
-    private void InitShader()
-    {
-        shader.SetFloat("radius", radius);
-
-    }
-    
-    private void InitVertexArrays(Mesh mesh)
-    {
-        
-    }
-
-    private void InitGPUBuffers()
-    {
-        
-    }
-    
-    void GetVerticesFromGPU()
-    {
-        
-    }
-
-    void Update(){
-        if (shader)
+        private bool InitData()
         {
-        	shader.SetFloat("radius", radius);
-            float delta = (Mathf.Sin(Time.time) + 1)/ 2;
-            shader.SetFloat("delta", delta);
-            shader.Dispatch(kernelHandle, 1, 1, 1);
+            this.kernelHandle = this.shader.FindKernel("CSMain");
+
+            MeshFilter mf = GetComponent<MeshFilter>();
+
+            if (mf == null)
+            {
+                Debug.Log("No MeshFilter found");
+                return false;
+            }
+
+            InitVertexArrays(mf.mesh);
+            InitGPUBuffers();
+
+            this.mesh = mf.mesh;
+
+            return true;
+        }
+
+        private void InitShader()
+        {
+            this.shader.SetFloat("radius", this.radius);
+
+        }
+    
+        private void InitVertexArrays(Mesh mesh)
+        {
+        
+        }
+
+        private void InitGPUBuffers()
+        {
+        
+        }
+
+        private void GetVerticesFromGPU()
+        {
+        
+        }
+
+        private void Update(){
+            if (this.shader)
+            {
+                this.shader.SetFloat("radius", this.radius);
+                float delta = (Mathf.Sin(Time.time) + 1)/ 2;
+                this.shader.SetFloat("delta", delta);
+                this.shader.Dispatch(this.kernelHandle, 1, 1, 1);
             
-            GetVerticesFromGPU();
+                GetVerticesFromGPU();
+            }
         }
-    }
 
-    void OnDestroy()
-    {
+        private void OnDestroy()
+        {
         
+        }
     }
 }
 

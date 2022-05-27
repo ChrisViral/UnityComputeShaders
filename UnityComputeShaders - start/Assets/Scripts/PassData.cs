@@ -1,51 +1,55 @@
 ﻿using UnityEngine;
-using System.Collections;
 
-public class PassData : MonoBehaviour
+namespace UnityComputeShaders
 {
-
-    public ComputeShader shader;
-    public int texResolution = 1024;
-
-    Renderer rend;
-    RenderTexture outputTexture;
-
-    int circlesHandle;
-
-    public Color clearColor = new Color();
-    public Color circleColor = new Color();
-
-    // Use this for initialization
-    void Start()
+    public class PassData : MonoBehaviour
     {
-        outputTexture = new RenderTexture(texResolution, texResolution, 0);
-        outputTexture.enableRandomWrite = true;
-        outputTexture.Create();
 
-        rend = GetComponent<Renderer>();
-        rend.enabled = true;
+        public ComputeShader shader;
+        public int texResolution = 1024;
 
-        InitShader();
-    }
+        private Renderer rend;
+        private RenderTexture outputTexture;
 
-    private void InitShader()
-    {
-        circlesHandle = shader.FindKernel("Circles");
+        private int circlesHandle;
 
-        shader.SetInt( "texResolution", texResolution);
-        shader.SetTexture( circlesHandle, "Result", outputTexture);
+        public Color clearColor;
+        public Color circleColor;
 
-        rend.material.SetTexture("_MainTex", outputTexture);
-    }
+        // Use this for initialization
+        private void Start()
+        {
+            this.outputTexture = new(this.texResolution, this.texResolution, 0)
+            {
+                enableRandomWrite = true
+            };
+            this.outputTexture.Create();
+
+            this.rend = GetComponent<Renderer>();
+            this.rend.enabled = true;
+
+            InitShader();
+        }
+
+        private void InitShader()
+        {
+            this.circlesHandle = this.shader.FindKernel("Circles");
+
+            this.shader.SetInt( "texResolution", this.texResolution);
+            this.shader.SetTexture( this.circlesHandle, "Result", this.outputTexture);
+
+            this.rend.material.SetTexture("_MainTex", this.outputTexture);
+        }
  
-    private void DispatchKernel(int count)
-    {
-        shader.Dispatch(circlesHandle, count, 1, 1);
-    }
+        private void DispatchKernel(int count)
+        {
+            this.shader.Dispatch(this.circlesHandle, count, 1, 1);
+        }
 
-    void Update()
-    {
-        DispatchKernel(1);
+        private void Update()
+        {
+            DispatchKernel(1);
+        }
     }
 }
 

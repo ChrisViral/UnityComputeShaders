@@ -1,33 +1,35 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEngine;
 
-public class VoxelizeMesh : MonoBehaviour 
+namespace UnityComputeShaders
 {
-    public Mesh meshToVoxelize;
-    public int yParticleCount = 4;
-    public int layer = 9;
-
-    float particleSize = 0;
-
-    public float ParticleSize{
-        get{
-            return particleSize; 
-        }
-    }
-
-    List<Vector3> positions = new List<Vector3>();
-
-    public List<Vector3> PositionList
+    public class VoxelizeMesh : MonoBehaviour 
     {
-        get
+        public Mesh meshToVoxelize;
+        public int yParticleCount = 4;
+        public int layer = 9;
+
+        private float particleSize = 0;
+
+        public float ParticleSize{
+            get{
+                return this.particleSize; 
+            }
+        }
+
+        private List<Vector3> positions = new();
+
+        public List<Vector3> PositionList
         {
-            return positions;
+            get
+            {
+                return this.positions;
+            }
         }
-    }
 
-    public void Voxelize(Mesh mesh)
-    {
+        public void Voxelize(Mesh mesh)
+        {
         
+        }
     }
 }

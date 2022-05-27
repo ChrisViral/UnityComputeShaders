@@ -1,113 +1,113 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
 #pragma warning disable 0649
 
-public class ParticleFun : MonoBehaviour
+namespace UnityComputeShaders
 {
-
-    private Vector2 cursorPos;
-
-    // struct
-    struct Particle
+    public class ParticleFun : MonoBehaviour
     {
-        public Vector3 position;
-        public Vector3 velocity;
-        public float life;
-    }
 
-    const int SIZE_PARTICLE = 7 * sizeof(float);
+        private Vector2 cursorPos;
 
-    public int particleCount = 1000000;
-    public Material material;
-    public ComputeShader shader;
-    [Range(1, 10)]
-    public int pointSize = 2;
-
-    int kernelID;
-    ComputeBuffer particleBuffer;
-
-    int groupSizeX; 
-    
-    
-    // Use this for initialization
-    void Start()
-    {
-        Init();
-    }
-
-    void Init()
-    {
-        // initialize the particles
-        Particle[] particleArray = new Particle[particleCount];
-
-        for (int i = 0; i < particleCount; i++)
+        // struct
+        private struct Particle
         {
-            //TO DO: Initialize particle
+            public Vector3 position;
+            public Vector3 velocity;
+            public float life;
         }
 
-        // create compute buffer
-        particleBuffer = new ComputeBuffer(particleCount, SIZE_PARTICLE);
+        private const int SIZE_PARTICLE = 7 * sizeof(float);
 
-        particleBuffer.SetData(particleArray);
+        public int particleCount = 1000000;
+        public Material material;
+        public ComputeShader shader;
+        [Range(1, 10)]
+        public int pointSize = 2;
 
-        // find the id of the kernel
-        kernelID = shader.FindKernel("CSParticle");
+        private int kernelID;
+        private ComputeBuffer particleBuffer;
 
-        uint threadsX;
-        shader.GetKernelThreadGroupSizes(kernelID, out threadsX, out _, out _);
-        groupSizeX = Mathf.CeilToInt((float)particleCount / (float)threadsX);
+        private int groupSizeX; 
+    
+    
+        // Use this for initialization
+        private void Start()
+        {
+            Init();
+        }
 
-        // bind the compute buffer to the shader and the compute shader
-        shader.SetBuffer(kernelID, "particleBuffer", particleBuffer);
-        material.SetBuffer("particleBuffer", particleBuffer);
+        private void Init()
+        {
+            // initialize the particles
+            Particle[] particleArray = new Particle[this.particleCount];
 
-        material.SetInt("_PointSize", pointSize);
-    }
+            for (int i = 0; i < this.particleCount; i++)
+            {
+                //TO DO: Initialize particle
+            }
 
-    void OnRenderObject()
-    {
-        material.SetPass(0);
-        Graphics.DrawProceduralNow(MeshTopology.Points, 1, particleCount);
-    }
+            // create compute buffer
+            this.particleBuffer = new(this.particleCount, SIZE_PARTICLE);
 
-    void OnDestroy()
-    {
-        if (particleBuffer != null)
-            particleBuffer.Release();
-    }
+            this.particleBuffer.SetData(particleArray);
 
-    // Update is called once per frame
-    void Update()
-    {
+            // find the id of the kernel
+            this.kernelID = this.shader.FindKernel("CSParticle");
 
-        float[] mousePosition2D = { cursorPos.x, cursorPos.y };
+            this.shader.GetKernelThreadGroupSizes(this.kernelID, out uint threadsX, out _, out _);
+            this.groupSizeX = Mathf.CeilToInt(this.particleCount / (float)threadsX);
 
-        // Send datas to the compute shader
-        shader.SetFloat("deltaTime", Time.deltaTime);
-        shader.SetFloats("mousePosition", mousePosition2D);
+            // bind the compute buffer to the shader and the compute shader
+            this.shader.SetBuffer(this.kernelID, "particleBuffer", this.particleBuffer);
+            this.material.SetBuffer("particleBuffer", this.particleBuffer);
 
-        // Update the Particles
-        shader.Dispatch(kernelID, groupSizeX, 1, 1);
-    }
+            this.material.SetInt("_PointSize", this.pointSize);
+        }
 
-    void OnGUI()
-    {
-        Vector3 p = new Vector3();
-        Camera c = Camera.main;
-        Event e = Event.current;
-        Vector2 mousePos = new Vector2();
+        private void OnRenderObject()
+        {
+            this.material.SetPass(0);
+            Graphics.DrawProceduralNow(MeshTopology.Points, 1, this.particleCount);
+        }
 
-        // Get the mouse position from Event.
-        // Note that the y position from Event is inverted.
-        mousePos.x = e.mousePosition.x;
-        mousePos.y = c.pixelHeight - e.mousePosition.y;
+        private void OnDestroy()
+        {
+            this.particleBuffer?.Release();
+        }
 
-        p = c.ScreenToWorldPoint(new Vector3(mousePos.x, mousePos.y, c.nearClipPlane + 14));// z = 3.
+        // Update is called once per frame
+        private void Update()
+        {
 
-        cursorPos.x = p.x;
-        cursorPos.y = p.y;
+            float[] mousePosition2D = { this.cursorPos.x, this.cursorPos.y };
+
+            // Send datas to the compute shader
+            this.shader.SetFloat("deltaTime", Time.deltaTime);
+            this.shader.SetFloats("mousePosition", mousePosition2D);
+
+            // Update the Particles
+            this.shader.Dispatch(this.kernelID, this.groupSizeX, 1, 1);
+        }
+
+        private void OnGUI()
+        {
+            Vector3 p = new();
+            Camera c = Camera.main;
+            Event e = Event.current;
+            Vector2 mousePos = new()
+            {
+                // Note that the y position from Event is inverted.
+                // Get the mouse position from Event.
+                x = e.mousePosition.x,
+                y = c.pixelHeight - e.mousePosition.y
+            };
+
+            p = c.ScreenToWorldPoint(new(mousePos.x, mousePos.y, c.nearClipPlane + 14)); // z = 3.
+
+            this.cursorPos.x = p.x;
+            this.cursorPos.y = p.y;
         
+        }
     }
 }

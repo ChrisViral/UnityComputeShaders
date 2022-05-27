@@ -1,51 +1,50 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-[ExecuteInEditMode]
-public class RingHighlight : BasePP
+namespace UnityComputeShaders
 {
-    [Range(0.0f, 100.0f)]
-    public float radius = 10;
-    [Range(0.0f, 100.0f)]
-    public float softenEdge;
-    [Range(0.0f, 1.0f)]
-    public float shade;
-    public Transform trackedObject;
-
-    protected override void Init()
+    [ExecuteInEditMode]
+    public class RingHighlight : BasePP
     {
-        kernelName = "Highlight";
-        base.Init();
-    }
+        [Range(0.0f, 100.0f)]
+        public float radius = 10;
+        [Range(0.0f, 100.0f)]
+        public float softenEdge;
+        [Range(0.0f, 1.0f)]
+        public float shade;
+        public Transform trackedObject;
 
-    private void OnValidate()
-    {
-        if(!init)
-            Init();
-           
-        SetProperties();
-    }
+        protected override string KernelName => "Highlight";
 
-    protected void SetProperties()
-    {
-        float rad = (radius / 100.0f) * texSize.y;
-        shader.SetFloat("radius", rad);
-        shader.SetFloat("edgeWidth", rad * softenEdge / 100.0f);
-        shader.SetFloat("shade", shade);
-    }
-
-    protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        if (!init || shader == null)
+        private void OnValidate()
         {
-            Graphics.Blit(source, destination);
-        }
-        else
-        {
-            CheckResolution(out _);
-            DispatchWithSource(ref source, ref destination);
-        }
-    }
+            if (!this.init)
+            {
+                Init();
+            }
 
+            SetProperties();
+        }
+
+        protected void SetProperties()
+        {
+            float rad = (this.radius / 100.0f) * this.textureSize.y;
+            this.shader.SetFloat("radius", rad);
+            this.shader.SetFloat("edgeWidth", rad * this.softenEdge / 100.0f);
+            this.shader.SetFloat("shade", this.shade);
+        }
+
+        protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
+        {
+            if (!this.init || this.shader == null)
+            {
+                Graphics.Blit(source, destination);
+            }
+            else
+            {
+                CheckResolution(out _);
+                DispatchWithSource(ref source, ref destination);
+            }
+        }
+
+    }
 }

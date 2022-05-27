@@ -1,124 +1,118 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class SimplePhysics : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public struct Ball
+    public class SimplePhysics : MonoBehaviour
     {
-        public Vector3 position;
-        public Vector3 velocity;
-        public Color color;
-
-        public Ball(float posRange, float maxVel)
+        public struct Ball
         {
-            position.x = Random.value * posRange - posRange/2;
-            position.y = Random.value * posRange;
-            position.z = Random.value * posRange - posRange / 2;
-            velocity.x = Random.value * maxVel - maxVel/2;
-            velocity.y = Random.value * maxVel - maxVel / 2;
-            velocity.z = Random.value * maxVel - maxVel / 2;
-            color.r = Random.value;
-            color.g = Random.value;
-            color.b = Random.value;
-            color.a = 1;
-        }
-    }
+            public Vector3 position;
+            public Vector3 velocity;
+            public Color color;
 
-    public ComputeShader shader;
-
-    public Mesh ballMesh;
-    public Material ballMaterial;
-    public int ballsCount;
-    public float radius = 0.08f;
-    
-    int kernelHandle;
-    ComputeBuffer ballsBuffer;
-    ComputeBuffer argsBuffer;
-    uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
-    Ball[] ballsArray;
-    int groupSizeX;
-    int numOfBalls;
-    Bounds bounds;
-   
-    MaterialPropertyBlock props;
-
-    void Start()
-    {
-        kernelHandle = shader.FindKernel("CSMain");
-
-        uint x;
-        shader.GetKernelThreadGroupSizes(kernelHandle, out x, out _, out _);
-        groupSizeX = Mathf.CeilToInt((float)ballsCount / (float)x);
-        numOfBalls = groupSizeX * (int)x;
-
-        props = new MaterialPropertyBlock();
-        props.SetFloat("_UniqueID", Random.value);
-
-        bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
-
-        InitBalls();
-        InitShader();
-    }
-
-    private void InitBalls()
-    {
-        ballsArray = new Ball[numOfBalls];
-
-        for (int i = 0; i < numOfBalls; i++)
-        {
-            ballsArray[i] = new Ball(4, 1.0f);
-        }
-    }
-
-    void InitShader()
-    {
-        ballsBuffer = new ComputeBuffer(numOfBalls, 10 * sizeof(float));
-        ballsBuffer.SetData(ballsArray);
-
-        argsBuffer = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-        if (ballMesh != null)
-        {
-            args[0] = (uint)ballMesh.GetIndexCount(0);
-            args[1] = (uint)numOfBalls;
-            args[2] = (uint)ballMesh.GetIndexStart(0);
-            args[3] = (uint)ballMesh.GetBaseVertex(0);
-        }
-        argsBuffer.SetData(args);
-
-        shader.SetBuffer(kernelHandle, "ballsBuffer", ballsBuffer);
-        shader.SetInt("ballsCount", numOfBalls);
-        shader.SetVector("limitsXZ", new Vector4(-2.5f+radius, 2.5f-radius, -2.5f+radius, 2.5f-radius));
-        shader.SetFloat("floorY", -2.5f+radius);
-        shader.SetFloat("radius", radius);
-
-        ballMaterial.SetFloat("_Radius", radius*2);
-        ballMaterial.SetBuffer("ballsBuffer", ballsBuffer);
-    }
-
-    void Update()
-    {
-        int iterations = 5;
-        shader.SetFloat("deltaTime", Time.deltaTime/iterations);
-
-        for (int i = 0; i < iterations; i++)
-        {
-            shader.Dispatch(kernelHandle, groupSizeX, 1, 1);
+            public Ball(float posRange, float maxVel)
+            {
+                this.position.x = Random.value * posRange - posRange/2;
+                this.position.y = Random.value * posRange;
+                this.position.z = Random.value * posRange - posRange / 2;
+                this.velocity.x = Random.value * maxVel - maxVel/2;
+                this.velocity.y = Random.value * maxVel - maxVel / 2;
+                this.velocity.z = Random.value * maxVel - maxVel / 2;
+                this.color.r = Random.value;
+                this.color.g = Random.value;
+                this.color.b = Random.value;
+                this.color.a = 1;
+            }
         }
 
-        Graphics.DrawMeshInstancedIndirect(ballMesh, 0, ballMaterial, bounds, argsBuffer, 0, props);
-    }
+        public ComputeShader shader;
 
-    void OnDestroy()
-    {
-        if (ballsBuffer != null)
+        public Mesh ballMesh;
+        public Material ballMaterial;
+        public int ballsCount;
+        public float radius = 0.08f;
+
+        private int kernelHandle;
+        private ComputeBuffer ballsBuffer;
+        private ComputeBuffer argsBuffer;
+        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
+        private Ball[] ballsArray;
+        private int groupSizeX;
+        private int numOfBalls;
+        private Bounds bounds;
+
+        private MaterialPropertyBlock props;
+
+        private void Start()
         {
-            ballsBuffer.Dispose();
+            this.kernelHandle = this.shader.FindKernel("CSMain");
+
+            this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out _, out _);
+            this.groupSizeX = Mathf.CeilToInt(this.ballsCount / (float)x);
+            this.numOfBalls = this.groupSizeX * (int)x;
+
+            this.props = new();
+            this.props.SetFloat("_UniqueID", Random.value);
+
+            this.bounds = new(Vector3.zero, Vector3.one * 1000);
+
+            InitBalls();
+            InitShader();
         }
 
-        if (argsBuffer != null)
+        private void InitBalls()
         {
-            argsBuffer.Dispose();
+            this.ballsArray = new Ball[this.numOfBalls];
+
+            for (int i = 0; i < this.numOfBalls; i++)
+            {
+                this.ballsArray[i] = new(4, 1.0f);
+            }
+        }
+
+        private void InitShader()
+        {
+            this.ballsBuffer = new(this.numOfBalls, 10 * sizeof(float));
+            this.ballsBuffer.SetData(this.ballsArray);
+
+            this.argsBuffer = new(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            if (this.ballMesh != null)
+            {
+                this.args[0] = this.ballMesh.GetIndexCount(0);
+                this.args[1] = (uint)this.numOfBalls;
+                this.args[2] = this.ballMesh.GetIndexStart(0);
+                this.args[3] = this.ballMesh.GetBaseVertex(0);
+            }
+            this.argsBuffer.SetData(this.args);
+
+            this.shader.SetBuffer(this.kernelHandle, "ballsBuffer", this.ballsBuffer);
+            this.shader.SetInt("ballsCount", this.numOfBalls);
+            this.shader.SetVector("limitsXZ", new(-2.5f+this.radius, 2.5f-this.radius, -2.5f+this.radius, 2.5f-this.radius));
+            this.shader.SetFloat("floorY", -2.5f+this.radius);
+            this.shader.SetFloat("radius", this.radius);
+
+            this.ballMaterial.SetFloat("_Radius", this.radius*2);
+            this.ballMaterial.SetBuffer("ballsBuffer", this.ballsBuffer);
+        }
+
+        private void Update()
+        {
+            int iterations = 5;
+            this.shader.SetFloat("deltaTime", Time.deltaTime/iterations);
+
+            for (int i = 0; i < iterations; i++)
+            {
+                this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
+            }
+
+            Graphics.DrawMeshInstancedIndirect(this.ballMesh, 0, this.ballMaterial, this.bounds, this.argsBuffer, 0, this.props);
+        }
+
+        private void OnDestroy()
+        {
+            this.ballsBuffer?.Dispose();
+
+            this.argsBuffer?.Dispose();
         }
     }
 }

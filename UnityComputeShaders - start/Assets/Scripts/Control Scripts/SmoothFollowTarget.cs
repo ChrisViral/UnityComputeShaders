@@ -1,39 +1,33 @@
-using System;
 using UnityEngine;
 
-public class SmoothFollowTarget : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public GameObject target;
-    public float[] limitsX;
-    Vector3 offset;
-    
-
-    bool b;
-
-    private void LateUpdate()
+    public class SmoothFollowTarget : MonoBehaviour
     {
-        if (target == null)
+        public GameObject target;
+        public Vector2 limitsX = new(float.NegativeInfinity, float.PositiveInfinity);
+        private Vector3? offset;
+
+        private void LateUpdate()
         {
-            target = GameObject.FindGameObjectWithTag("Player");
-            return;
-        }
-        else
-        {
-            if (!b)
+            if (!this.target)
             {
-                offset = transform.position - target.transform.position;
-                b = true;
+                this.target = GameObject.FindGameObjectWithTag("Player");
+                if (!this.target)
+                {
+                    return;
+                }
             }
 
-            Vector3 pos = target.transform.position + offset;
-            if (limitsX != null && limitsX.Length == 2)
-            {
-                pos.x = Mathf.Clamp(pos.x, limitsX[0], limitsX[1]);
-                //Debug.Log("pos.x clamped to " + pos.x);
-            }
-            transform.position = Vector3.Lerp(transform.position, pos, Time.deltaTime * 5);
-            transform.LookAt(target.transform);
-            return;
+            Vector3 transformPosition = this.transform.position;
+            Transform targetTransform = this.target.transform;
+            Vector3 targetPosition = targetTransform.position;
+            this.offset ??= transformPosition - targetPosition;
+
+            Vector3 position = targetPosition + this.offset.Value;
+            position.x = Mathf.Clamp(position.x, this.limitsX.x, this.limitsX.y);
+            this.transform.position = Vector3.Lerp(transformPosition, position, Time.deltaTime * 5f);
+            this.transform.LookAt(targetTransform);
         }
     }
 }

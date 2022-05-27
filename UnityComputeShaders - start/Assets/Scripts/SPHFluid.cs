@@ -1,195 +1,195 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class SPHFluid : MonoBehaviour
+namespace UnityComputeShaders
 {
-    private struct SPHParticle
+    public class SPHFluid : MonoBehaviour
     {
-        public Vector3 position;
+        private struct SPHParticle
+        {
+            public Vector3 position;
 
-        public Vector3 velocity;
-        public Vector3 force;
+            public Vector3 velocity;
+            public Vector3 force;
         
-        public float density;
-        public float pressure;
+            public float density;
+            public float pressure;
 
-        public SPHParticle(Vector3 pos)
-        {
-            position = pos;
-            velocity = Vector3.zero;
-            force = Vector3.zero;
-            density = 0.0f;
-            pressure = 0.0f;
-        }
-    }
-    int SIZE_SPHPARTICLE = 11 * sizeof(float);
-
-    private struct SPHCollider
-    {
-        public Vector3 position;
-        public Vector3 right;
-        public Vector3 up;
-        public Vector2 scale;
-
-        public SPHCollider(Transform _transform)
-        {
-            position = _transform.position;
-            right = _transform.right;
-            up = _transform.up;
-            scale = new Vector2(_transform.lossyScale.x / 2f, _transform.lossyScale.y / 2f);
-        }
-    }
-    int SIZE_SPHCOLLIDER = 11 * sizeof(float);
-
-    public float particleRadius = 1;
-    public float smoothingRadius = 1;
-    public float restDensity = 15;
-    public float particleMass = 0.1f;
-    public float particleViscosity = 1;
-    public float particleDrag = 0.025f;
-    public Mesh particleMesh = null;
-    public int particleCount = 5000;
-    public int rowSize = 100;
-    public ComputeShader shader;
-    public Material material;
-
-    // Consts
-    private static Vector4 GRAVITY = new Vector4(0.0f, -9.81f, 0.0f, 2000.0f);
-    private const float DT = 0.0008f;
-    private const float BOUND_DAMPING = -0.5f;
-    const float GAS = 2000.0f;
-
-    private float smoothingRadiusSq;
-
-    // Data
-    SPHParticle[] particlesArray;
-    ComputeBuffer particlesBuffer;
-    SPHCollider[] collidersArray;
-    ComputeBuffer collidersBuffer;
-    uint[] argsArray = { 0, 0, 0, 0, 0 };
-    ComputeBuffer argsBuffer;
-
-    Bounds bounds = new Bounds(Vector3.zero, Vector3.one * 0);
-
-    int kernelComputeDensityPressure;
-    int kernelComputeForces;
-    int kernelIntegrate;
-    int kernelComputeColliders;
-
-    int groupSize;
-    
-    private void Start()
-    {
-        InitSPH();
-        InitShader();
-    }
-
-    void UpdateColliders()
-    {
-        // Get colliders
-        GameObject[] collidersGO = GameObject.FindGameObjectsWithTag("SPHCollider");
-        if (collidersArray == null || collidersArray.Length != collidersGO.Length)
-        {
-            collidersArray = new SPHCollider[collidersGO.Length];
-            if (collidersBuffer != null)
+            public SPHParticle(Vector3 pos)
             {
-                collidersBuffer.Dispose();
+                this.position = pos;
+                this.velocity = Vector3.zero;
+                this.force = Vector3.zero;
+                this.density = 0.0f;
+                this.pressure = 0.0f;
             }
-            collidersBuffer = new ComputeBuffer(collidersArray.Length, SIZE_SPHCOLLIDER);
         }
-        for (int i = 0; i < collidersArray.Length; i++)
+
+        private int SIZE_SPHPARTICLE = 11 * sizeof(float);
+
+        private struct SPHCollider
         {
-            collidersArray[i] = new SPHCollider(collidersGO[i].transform);
+            public Vector3 position;
+            public Vector3 right;
+            public Vector3 up;
+            public Vector2 scale;
+
+            public SPHCollider(Transform _transform)
+            {
+                this.position = _transform.position;
+                this.right = _transform.right;
+                this.up = _transform.up;
+                this.scale = new(_transform.lossyScale.x / 2f, _transform.lossyScale.y / 2f);
+            }
         }
-        collidersBuffer.SetData(collidersArray);
-        shader.SetBuffer(kernelComputeColliders, "colliders", collidersBuffer);
-    }
 
-    private void Update()
-    {
-        UpdateColliders();
+        private int SIZE_SPHCOLLIDER = 11 * sizeof(float);
 
-        shader.Dispatch(kernelComputeDensityPressure, groupSize, 1, 1);
-        shader.Dispatch(kernelComputeForces, groupSize, 1, 1);
-        shader.Dispatch(kernelIntegrate, groupSize, 1, 1);
-        shader.Dispatch(kernelComputeColliders, groupSize, 1, 1);
+        public float particleRadius = 1;
+        public float smoothingRadius = 1;
+        public float restDensity = 15;
+        public float particleMass = 0.1f;
+        public float particleViscosity = 1;
+        public float particleDrag = 0.025f;
+        public Mesh particleMesh;
+        public int particleCount = 5000;
+        public int rowSize = 100;
+        public ComputeShader shader;
+        public Material material;
 
-        Graphics.DrawMeshInstancedIndirect(particleMesh, 0, material, bounds, argsBuffer);
-    }
+        // Consts
+        private static Vector4 GRAVITY = new(0.0f, -9.81f, 0.0f, 2000.0f);
+        private const float DT = 0.0008f;
+        private const float BOUND_DAMPING = -0.5f;
+        private const float GAS = 2000.0f;
 
+        private float smoothingRadiusSq;
 
-    void InitShader()
-    {
-        kernelComputeForces = shader.FindKernel("ComputeForces");
-        kernelIntegrate = shader.FindKernel("Integrate");
-        kernelComputeColliders = shader.FindKernel("ComputeColliders");
+        // Data
+        private SPHParticle[] particlesArray;
+        private ComputeBuffer particlesBuffer;
+        private SPHCollider[] collidersArray;
+        private ComputeBuffer collidersBuffer;
+        private uint[] argsArray = { 0, 0, 0, 0, 0 };
+        private ComputeBuffer argsBuffer;
 
-        float smoothingRadiusSq = smoothingRadius * smoothingRadius;
+        private Bounds bounds = new(Vector3.zero, Vector3.one * 0);
 
-        particlesBuffer = new ComputeBuffer(particlesArray.Length, SIZE_SPHPARTICLE);
-        particlesBuffer.SetData(particlesArray);
+        private int kernelComputeDensityPressure;
+        private int kernelComputeForces;
+        private int kernelIntegrate;
+        private int kernelComputeColliders;
 
-        UpdateColliders();
-
-        argsArray[0] = particleMesh.GetIndexCount(0);
-        argsArray[1] = (uint)particlesArray.Length;
-        argsBuffer = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-        argsBuffer.SetData(argsArray);
-
-        shader.SetInt("particleCount", particlesArray.Length);
-        shader.SetInt("colliderCount", collidersArray.Length);
-        shader.SetFloat("smoothingRadius", smoothingRadius);
-        shader.SetFloat("smoothingRadiusSq", smoothingRadiusSq);
-        shader.SetFloat("gas", GAS);
-        shader.SetFloat("restDensity", restDensity);
-        shader.SetFloat("radius", particleRadius);
-        shader.SetFloat("mass", particleMass);
-        shader.SetFloat("particleDrag", particleDrag);
-        shader.SetFloat("particleViscosity", particleViscosity);
-        shader.SetFloat("damping", BOUND_DAMPING);
-        shader.SetFloat("deltaTime", DT);
-        shader.SetVector("gravity", GRAVITY);
-
-        shader.SetBuffer(kernelComputeDensityPressure, "particles", particlesBuffer);
-        shader.SetBuffer(kernelComputeForces, "particles", particlesBuffer);
-        shader.SetBuffer(kernelIntegrate, "particles", particlesBuffer);
-        shader.SetBuffer(kernelComputeColliders, "particles", particlesBuffer);
-        shader.SetBuffer(kernelComputeColliders, "colliders", collidersBuffer);
-
-        material.SetBuffer("particles", particlesBuffer);
-        material.SetFloat("_Radius", particleRadius);
-    }
-
-    private void InitSPH()
-    {
-        kernelComputeDensityPressure = shader.FindKernel("ComputeDensityPressure");
-
-        uint numThreadsX;
-        shader.GetKernelThreadGroupSizes(kernelComputeDensityPressure, out numThreadsX, out _, out _);
-        groupSize = Mathf.CeilToInt((float)particleCount / (float)numThreadsX);
-        int amount = (int)numThreadsX * groupSize;
-
-        particlesArray = new SPHParticle[amount];
-        float size = particleRadius * 1.1f;
-        float center = rowSize * 0.5f;
-
-        for (int i = 0; i < amount; i++)
+        private int groupSize;
+    
+        private void Start()
         {
-            Vector3 pos = new Vector3();
-            pos.x = (i % rowSize) + Random.Range(-0.1f, 0.1f) - center;
-            pos.y = 2 + (float)((i / rowSize) / rowSize) * 1.1f;
-            pos.z = ((i / rowSize) % rowSize) + Random.Range(-0.1f, 0.1f) - center;
-            pos *= particleRadius;
-
-            particlesArray[i] = new SPHParticle( pos );
+            InitSPH();
+            InitShader();
         }
-    }
 
-    private void OnDestroy()
-    {
-        particlesBuffer.Dispose();
-        collidersBuffer.Dispose();
-        argsBuffer.Dispose();
+        private void UpdateColliders()
+        {
+            // Get colliders
+            GameObject[] collidersGO = GameObject.FindGameObjectsWithTag("SPHCollider");
+            if (this.collidersArray == null || this.collidersArray.Length != collidersGO.Length)
+            {
+                this.collidersArray = new SPHCollider[collidersGO.Length];
+                this.collidersBuffer?.Dispose();
+                this.collidersBuffer = new(this.collidersArray.Length, this.SIZE_SPHCOLLIDER);
+            }
+            for (int i = 0; i < this.collidersArray.Length; i++)
+            {
+                this.collidersArray[i] = new(collidersGO[i].transform);
+            }
+            this.collidersBuffer.SetData(this.collidersArray);
+            this.shader.SetBuffer(this.kernelComputeColliders, "colliders", this.collidersBuffer);
+        }
+
+        private void Update()
+        {
+            UpdateColliders();
+
+            this.shader.Dispatch(this.kernelComputeDensityPressure, this.groupSize, 1, 1);
+            this.shader.Dispatch(this.kernelComputeForces, this.groupSize, 1, 1);
+            this.shader.Dispatch(this.kernelIntegrate, this.groupSize, 1, 1);
+            this.shader.Dispatch(this.kernelComputeColliders, this.groupSize, 1, 1);
+
+            Graphics.DrawMeshInstancedIndirect(this.particleMesh, 0, this.material, this.bounds, this.argsBuffer);
+        }
+
+        private void InitShader()
+        {
+            this.kernelComputeForces = this.shader.FindKernel("ComputeForces");
+            this.kernelIntegrate = this.shader.FindKernel("Integrate");
+            this.kernelComputeColliders = this.shader.FindKernel("ComputeColliders");
+
+            float smoothingRadiusSq = this.smoothingRadius * this.smoothingRadius;
+
+            this.particlesBuffer = new(this.particlesArray.Length, this.SIZE_SPHPARTICLE);
+            this.particlesBuffer.SetData(this.particlesArray);
+
+            UpdateColliders();
+
+            this.argsArray[0] = this.particleMesh.GetIndexCount(0);
+            this.argsArray[1] = (uint)this.particlesArray.Length;
+            this.argsBuffer = new(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            this.argsBuffer.SetData(this.argsArray);
+
+            this.shader.SetInt("particleCount", this.particlesArray.Length);
+            this.shader.SetInt("colliderCount", this.collidersArray.Length);
+            this.shader.SetFloat("smoothingRadius", this.smoothingRadius);
+            this.shader.SetFloat("smoothingRadiusSq", smoothingRadiusSq);
+            this.shader.SetFloat("gas", GAS);
+            this.shader.SetFloat("restDensity", this.restDensity);
+            this.shader.SetFloat("radius", this.particleRadius);
+            this.shader.SetFloat("mass", this.particleMass);
+            this.shader.SetFloat("particleDrag", this.particleDrag);
+            this.shader.SetFloat("particleViscosity", this.particleViscosity);
+            this.shader.SetFloat("damping", BOUND_DAMPING);
+            this.shader.SetFloat("deltaTime", DT);
+            this.shader.SetVector("gravity", GRAVITY);
+
+            this.shader.SetBuffer(this.kernelComputeDensityPressure, "particles", this.particlesBuffer);
+            this.shader.SetBuffer(this.kernelComputeForces, "particles", this.particlesBuffer);
+            this.shader.SetBuffer(this.kernelIntegrate, "particles", this.particlesBuffer);
+            this.shader.SetBuffer(this.kernelComputeColliders, "particles", this.particlesBuffer);
+            this.shader.SetBuffer(this.kernelComputeColliders, "colliders", this.collidersBuffer);
+
+            this.material.SetBuffer("particles", this.particlesBuffer);
+            this.material.SetFloat("_Radius", this.particleRadius);
+        }
+
+        private void InitSPH()
+        {
+            this.kernelComputeDensityPressure = this.shader.FindKernel("ComputeDensityPressure");
+
+            this.shader.GetKernelThreadGroupSizes(this.kernelComputeDensityPressure, out uint numThreadsX, out _, out _);
+            this.groupSize = Mathf.CeilToInt(this.particleCount / (float)numThreadsX);
+            int amount = (int)numThreadsX * this.groupSize;
+
+            this.particlesArray = new SPHParticle[amount];
+            float size = this.particleRadius * 1.1f;
+            float center = this.rowSize * 0.5f;
+
+            for (int i = 0; i < amount; i++)
+            {
+                Vector3 pos = new()
+                {
+                    x = (i % this.rowSize) + Random.Range(-0.1f, 0.1f) - center,
+                    y = 2 + (i / this.rowSize) / this.rowSize * 1.1f,
+                    z = ((i / this.rowSize) % this.rowSize) + Random.Range(-0.1f, 0.1f) - center
+                };
+                pos *= this.particleRadius;
+
+                this.particlesArray[i] = new( pos );
+            }
+        }
+
+        private void OnDestroy()
+        {
+            this.particlesBuffer.Dispose();
+            this.collidersBuffer.Dispose();
+            this.argsBuffer.Dispose();
+        }
     }
 }

@@ -1,51 +1,55 @@
 ﻿using UnityEngine;
-using System.Collections;
 
-public class SolidColor : MonoBehaviour
+namespace UnityComputeShaders
 {
-
-    public ComputeShader shader;
-    public int texResolution = 256;
-
-    Renderer rend;
-    RenderTexture outputTexture;
-
-    int kernelHandle;
-
-    // Use this for initialization
-    void Start()
+    public class SolidColor : MonoBehaviour
     {
-        outputTexture = new RenderTexture(texResolution, texResolution, 0);
-        outputTexture.enableRandomWrite = true;
-        outputTexture.Create();
 
-        rend = GetComponent<Renderer>();
-        rend.enabled = true;
+        public ComputeShader shader;
+        public int texResolution = 256;
 
-        InitShader();
-    }
+        private Renderer rend;
+        private RenderTexture outputTexture;
 
-    private void InitShader()
-    {
-        kernelHandle = shader.FindKernel("CSMain");
+        private int kernelHandle;
 
-        shader.SetTexture(kernelHandle, "Result", outputTexture);
- 
-        rend.material.SetTexture("_MainTex", outputTexture);
-
-        DispatchShader(texResolution / 8, texResolution / 8);
-    }
-
-    private void DispatchShader(int x, int y)
-    {
-        shader.Dispatch(kernelHandle, x, y, 1);
-    }
-
-    void Update()
-    {
-        if (Input.GetKeyUp(KeyCode.U))
+        // Use this for initialization
+        private void Start()
         {
-            DispatchShader(texResolution / 8, texResolution / 8);
+            this.outputTexture = new(this.texResolution, this.texResolution, 0)
+            {
+                enableRandomWrite = true
+            };
+            this.outputTexture.Create();
+
+            this.rend = GetComponent<Renderer>();
+            this.rend.enabled = true;
+
+            InitShader();
+        }
+
+        private void InitShader()
+        {
+            this.kernelHandle = this.shader.FindKernel("CSMain");
+
+            this.shader.SetTexture(this.kernelHandle, "Result", this.outputTexture);
+ 
+            this.rend.material.SetTexture("_MainTex", this.outputTexture);
+
+            DispatchShader(this.texResolution / 8, this.texResolution / 8);
+        }
+
+        private void DispatchShader(int x, int y)
+        {
+            this.shader.Dispatch(this.kernelHandle, x, y, 1);
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyUp(KeyCode.U))
+            {
+                DispatchShader(this.texResolution / 8, this.texResolution / 8);
+            }
         }
     }
 }

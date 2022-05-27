@@ -1,126 +1,127 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class GrassTrample : MonoBehaviour
+namespace UnityComputeShaders
 {
-    struct GrassClump
+    public class GrassTrample : MonoBehaviour
     {
-        public Vector3 position;
-        public float lean;
-        public float trample;
-        public Quaternion quaternion;
-        public float noise;
-
-        public GrassClump( Vector3 pos)
+        private struct GrassClump
         {
-            position.x = pos.x;
-            position.y = pos.y;
-            position.z = pos.z;
-            lean = 0;
-            noise = Random.Range(0.5f, 1);
-            if (Random.value < 0.5f) noise = -noise;
-            trample = 0;
-            quaternion = Quaternion.identity;
+            public Vector3 position;
+            public float lean;
+            public float trample;
+            public Quaternion quaternion;
+            public float noise;
+
+            public GrassClump( Vector3 pos)
+            {
+                this.position.x = pos.x;
+                this.position.y = pos.y;
+                this.position.z = pos.z;
+                this.lean = 0;
+                this.noise = Random.Range(0.5f, 1);
+                if (Random.value < 0.5f) this.noise = -this.noise;
+                this.trample = 0;
+                this.quaternion = Quaternion.identity;
+            }
         }
-    }
-    int SIZE_GRASS_CLUMP = 10 * sizeof(float);
 
-    public Mesh mesh;
-    public Material material;
-    public ComputeShader shader;
-    [Range(0,1)]
-    public float density;
-    [Range(0.1f,3)]
-    public float scale;
-    [Range(0.5f, 3)]
-    public float speed;
-    [Range(10, 45)]
-    public float maxLean;
-    public Transform trampler;
-    [Range(0.1f,2)]
-    public float trampleRadius = 0.5f;
+        private int SIZE_GRASS_CLUMP = 10 * sizeof(float);
 
-    ComputeBuffer clumpsBuffer;
-    ComputeBuffer argsBuffer;
-    GrassClump[] clumpsArray;
-    uint[] argsArray = new uint[] { 0, 0, 0, 0, 0 };
-    Bounds bounds;
-    int timeID;
-    int tramplePosID;
-    int groupSize;
-    int kernelUpdateGrass;
-    Vector4 pos = new Vector4();
+        public Mesh mesh;
+        public Material material;
+        public ComputeShader shader;
+        [Range(0,1)]
+        public float density;
+        [Range(0.1f,3)]
+        public float scale;
+        [Range(0.5f, 3)]
+        public float speed;
+        [Range(10, 45)]
+        public float maxLean;
+        public Transform trampler;
+        [Range(0.1f,2)]
+        public float trampleRadius = 0.5f;
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        bounds = new Bounds(Vector3.zero, new Vector3(30, 30, 30));
-        InitShader();
-    }
+        private ComputeBuffer clumpsBuffer;
+        private ComputeBuffer argsBuffer;
+        private GrassClump[] clumpsArray;
+        private uint[] argsArray = { 0, 0, 0, 0, 0 };
+        private Bounds bounds;
+        private int timeID;
+        private int tramplePosID;
+        private int groupSize;
+        private int kernelUpdateGrass;
+        private Vector4 pos;
 
-    void InitShader()
-    {
-        MeshFilter mf = GetComponent<MeshFilter>();
-        Bounds bounds = mf.sharedMesh.bounds;
-        Vector2 size = new Vector2(bounds.extents.x * transform.localScale.x, bounds.extents.z * transform.localScale.z);
+        // Start is called before the first frame update
+        private void Start()
+        {
+            this.bounds = new(Vector3.zero, new(30, 30, 30));
+            InitShader();
+        }
+
+        private void InitShader()
+        {
+            MeshFilter mf = GetComponent<MeshFilter>();
+            Bounds bounds = mf.sharedMesh.bounds;
+            Vector2 size = new(bounds.extents.x * this.transform.localScale.x, bounds.extents.z * this.transform.localScale.z);
         
-        Vector2 clumps = size;
-        Vector3 vec = transform.localScale / 0.1f * density;
-        clumps.x *= vec.x;
-        clumps.y *= vec.z;
+            Vector2 clumps = size;
+            Vector3 vec = this.transform.localScale / 0.1f * this.density;
+            clumps.x *= vec.x;
+            clumps.y *= vec.z;
 
-        int total = (int)clumps.x * (int)clumps.y;
+            int total = (int)clumps.x * (int)clumps.y;
 
-        kernelUpdateGrass = shader.FindKernel("UpdateGrass");
+            this.kernelUpdateGrass = this.shader.FindKernel("UpdateGrass");
 
-        uint threadGroupSize;
-        shader.GetKernelThreadGroupSizes(kernelUpdateGrass, out threadGroupSize, out _, out _);
-        groupSize = Mathf.CeilToInt((float)total / (float)threadGroupSize);
-        int count = groupSize * (int)threadGroupSize;
+            this.shader.GetKernelThreadGroupSizes(this.kernelUpdateGrass, out uint threadGroupSize, out _, out _);
+            this.groupSize = Mathf.CeilToInt(total / (float)threadGroupSize);
+            int count = this.groupSize * (int)threadGroupSize;
 
-        clumpsArray = new GrassClump[count];
+            this.clumpsArray = new GrassClump[count];
 
-        for(int i=0; i<count; i++)
-        {
-            Vector3 pos = new Vector3(Random.value * size.x * 2 - size.x, 0, Random.value * size.y * 2 - size.y);
-            clumpsArray[i] = new GrassClump(pos);
+            for(int i=0; i<count; i++)
+            {
+                Vector3 pos = new(Random.value * size.x * 2 - size.x, 0, Random.value * size.y * 2 - size.y);
+                this.clumpsArray[i] = new(pos);
+            }
+
+            this.clumpsBuffer = new(count, this.SIZE_GRASS_CLUMP);
+            this.clumpsBuffer.SetData(this.clumpsArray);
+
+            this.shader.SetBuffer(this.kernelUpdateGrass, "clumpsBuffer", this.clumpsBuffer);
+            this.shader.SetFloat("maxLean", this.maxLean * Mathf.PI / 180);
+            this.shader.SetFloat("trampleRadius", this.trampleRadius);
+            this.shader.SetFloat("speed", this.speed);
+            this.timeID = Shader.PropertyToID("time");
+            this.tramplePosID = Shader.PropertyToID("tramplePos");
+
+            this.argsArray[0] = this.mesh.GetIndexCount(0);
+            this.argsArray[1] = (uint)count;
+            this.argsBuffer = new(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            this.argsBuffer.SetData(this.argsArray);
+
+            this.material.SetBuffer("clumpsBuffer", this.clumpsBuffer);
+            this.material.SetFloat("_Scale", this.scale);
         }
 
-        clumpsBuffer = new ComputeBuffer(count, SIZE_GRASS_CLUMP);
-        clumpsBuffer.SetData(clumpsArray);
+        // Update is called once per frame
+        private void Update()
+        {
+            this.shader.SetFloat(this.timeID, Time.time);
+            this.pos = this.trampler.position;
+            this.shader.SetVector(this.tramplePosID, this.pos);
 
-        shader.SetBuffer(kernelUpdateGrass, "clumpsBuffer", clumpsBuffer);
-        shader.SetFloat("maxLean", maxLean * Mathf.PI / 180);
-        shader.SetFloat("trampleRadius", trampleRadius);
-        shader.SetFloat("speed", speed);
-        timeID = Shader.PropertyToID("time");
-        tramplePosID = Shader.PropertyToID("tramplePos");
+            this.shader.Dispatch(this.kernelUpdateGrass, this.groupSize, 1, 1);
 
-        argsArray[0] = mesh.GetIndexCount(0);
-        argsArray[1] = (uint)count;
-        argsBuffer = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-        argsBuffer.SetData(argsArray);
+            Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.material, this.bounds, this.argsBuffer);
+        }
 
-        material.SetBuffer("clumpsBuffer", clumpsBuffer);
-        material.SetFloat("_Scale", scale);
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        shader.SetFloat(timeID, Time.time);
-        pos = trampler.position;
-        shader.SetVector(tramplePosID, pos);
-
-        shader.Dispatch(kernelUpdateGrass, groupSize, 1, 1);
-
-        Graphics.DrawMeshInstancedIndirect(mesh, 0, material, bounds, argsBuffer);
-    }
-
-    private void OnDestroy()
-    {
-        clumpsBuffer.Release();
-        argsBuffer.Release();
+        private void OnDestroy()
+        {
+            this.clumpsBuffer.Release();
+            this.argsBuffer.Release();
+        }
     }
 }

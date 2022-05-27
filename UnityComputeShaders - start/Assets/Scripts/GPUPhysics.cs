@@ -1,155 +1,154 @@
-﻿using System.Collections;
-using System.Collections.Generic;
+﻿using CjLib;
 using UnityEngine;
-using UnityEngine.Rendering;
 
-public class GPUPhysics : MonoBehaviour {
-	struct RigidBody
-    {
-		public Vector3 position;
-		public Quaternion quaternion;
-		public Vector3 velocity;
-		public Vector3 angularVelocity;
-		public int particleIndex;
-		public int particleCount;
-
-		public RigidBody(Vector3 pos, int pIndex, int pCount)
+namespace UnityComputeShaders
+{
+    public class GPUPhysics : MonoBehaviour {
+        private struct RigidBody
         {
-			position = pos;
-			quaternion = Random.rotation;//Quaternion.identity;
-			velocity = angularVelocity = Vector3.zero;
-			particleIndex = pIndex;
-			particleCount = pCount;
+            public Vector3 position;
+            public Quaternion quaternion;
+            public Vector3 velocity;
+            public Vector3 angularVelocity;
+            public int particleIndex;
+            public int particleCount;
+
+            public RigidBody(Vector3 pos, int pIndex, int pCount)
+            {
+                this.position = pos;
+                this.quaternion = Random.rotation; //Quaternion.identity;
+                this.velocity = this.angularVelocity = Vector3.zero;
+                this.particleIndex = pIndex;
+                this.particleCount = pCount;
+            }
         }
-    };
 
-	int SIZE_RIGIDBODY = 13 * sizeof(float) + 2 * sizeof(int);
+        private int SIZE_RIGIDBODY = 13 * sizeof(float) + 2 * sizeof(int);
 
-	struct Particle
-    {
-		public Vector3 position;
-		public Vector3 velocity;
-		public Vector3 force;
-		public Vector3 localPosition;
-		public Vector3 offsetPosition;
-
-		public Particle(Vector3 pos)
+        private struct Particle
         {
-			position = velocity = force = offsetPosition = Vector3.zero;
-			localPosition = pos;
+            public Vector3 position;
+            public Vector3 velocity;
+            public Vector3 force;
+            public Vector3 localPosition;
+            public Vector3 offsetPosition;
+
+            public Particle(Vector3 pos)
+            {
+                this.position = this.velocity = this.force = this.offsetPosition = Vector3.zero;
+                this.localPosition = pos;
+            }
         }
-    };
 
-	int SIZE_PARTICLE = 15 * sizeof(float);
+        private int SIZE_PARTICLE = 15 * sizeof(float);
 
-	public Mesh cubeMesh {
-		get {
-			return CjLib.PrimitiveMeshFactory.BoxFlatShaded();
-		}
-	}
+        public Mesh cubeMesh {
+            get {
+                return PrimitiveMeshFactory.BoxFlatShaded();
+            }
+        }
 
-	public ComputeShader shader;
-	public Material cubeMaterial;
-	public Bounds bounds;
-	public float cubeMass;
-	public float scale;
-	public int particlesPerEdge;
-	public float springCoefficient;
-	public float dampingCoefficient;
-	public float tangentialCoefficient;
-	public float gravityCoefficient;
-	public float frictionCoefficient;
-	public float angularFrictionCoefficient;
-	public float angularForceScalar;
-	public float linearForceScalar;
-	public int rigidBodyCount = 1000;
-	[Range(1, 20)]
-	public int stepsPerUpdate = 10;
+        public ComputeShader shader;
+        public Material cubeMaterial;
+        public Bounds bounds;
+        public float cubeMass;
+        public float scale;
+        public int particlesPerEdge;
+        public float springCoefficient;
+        public float dampingCoefficient;
+        public float tangentialCoefficient;
+        public float gravityCoefficient;
+        public float frictionCoefficient;
+        public float angularFrictionCoefficient;
+        public float angularForceScalar;
+        public float linearForceScalar;
+        public int rigidBodyCount = 1000;
+        [Range(1, 20)]
+        public int stepsPerUpdate = 10;
 	
-	// calculated
-	private Vector3 cubeScale;
+        // calculated
+        private Vector3 cubeScale;
+
+        private int particlesPerBody;
+        private float particleDiameter;
+
+        private RigidBody[] rigidBodiesArray;
+        private Particle[] particlesArray;
+        private uint[] argsArray;
+
+        private ComputeBuffer rigidBodiesBuffer;
+        private ComputeBuffer particlesBuffer;
+        private ComputeBuffer argsBuffer;
+        private ComputeBuffer voxelGridBuffer;               
 	
-	int particlesPerBody;
-	float particleDiameter;
-
-	RigidBody[] rigidBodiesArray;
-	Particle[] particlesArray;
-	uint[] argsArray;
+        private int kernelGenerateParticleValues;
+        private int kernelCollisionDetection;
+        private int kernelComputeMomenta;
+        private int kernelComputePositionAndRotation;
 	
-	ComputeBuffer rigidBodiesBuffer;
-	ComputeBuffer particlesBuffer;
-	private ComputeBuffer argsBuffer;
-	private ComputeBuffer voxelGridBuffer;               
-	
-	private int kernelGenerateParticleValues;
-	private int kernelCollisionDetection;
-	private int kernelComputeMomenta;
-	private int kernelComputePositionAndRotation;
-	
-	private int groupsPerRigidBody;
-	private int groupsPerParticle;
+        private int groupsPerRigidBody;
+        private int groupsPerParticle;
 
-	private int deltaTimeID;
+        private int deltaTimeID;
 
-	int activeCount = 0;
+        private int activeCount = 0;
 
-	private int frameCounter;
+        private int frameCounter;
 
-	void Start() {
+        private void Start() {
 
-		InitArrays();
+            InitArrays();
 
-		InitRigidBodies();
+            InitRigidBodies();
 
-		InitParticles();
+            InitParticles();
 
-		InitBuffers();
+            InitBuffers();
 
-		InitShader();
+            InitShader();
 		
-		InitInstancing();
+            InitInstancing();
 		
-	}
+        }
 
-	void InitArrays()
-    {
+        private void InitArrays()
+        {
 		
-	}
+        }
 
-	void InitRigidBodies()
-    {
+        private void InitRigidBodies()
+        {
 		
-	}
+        }
 
-	void InitParticles()
-    {
+        private void InitParticles()
+        {
 		
-	}
+        }
 
-	void InitBuffers()
-    {
+        private void InitBuffers()
+        {
 		
-	}
+        }
 
-	void InitShader()
-	{
+        private void InitShader()
+        {
 			
-	}
+        }
 
-	void InitInstancing() {
+        private void InitInstancing() {
 		
-	}
+        }
 
-	void Update() {
-        Graphics.DrawMeshInstancedIndirect(cubeMesh, 0, cubeMaterial, bounds, argsBuffer);
-	}
+        private void Update() {
+            Graphics.DrawMeshInstancedIndirect(this.cubeMesh, 0, this.cubeMaterial, this.bounds, this.argsBuffer);
+        }
 
-	void OnDestroy() {
-		rigidBodiesBuffer.Release();
-		particlesBuffer.Release();
+        private void OnDestroy() {
+            this.rigidBodiesBuffer.Release();
+            this.particlesBuffer.Release();
 
-		if (argsBuffer != null) {
-			argsBuffer.Release();
-		}
-	}
+            this.argsBuffer?.Release();
+        }
+    }
 }

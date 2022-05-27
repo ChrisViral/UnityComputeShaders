@@ -1,35 +1,36 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class OrbitingStars : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public int starCount = 17;
-    public ComputeShader shader;
-
-    public GameObject prefab;
-
-    int kernelHandle;
-    uint threadGroupSizeX;
-    int groupSizeX;
-    
-    Transform[] stars;
-    
-    void Start()
+    public class OrbitingStars : MonoBehaviour
     {
-        kernelHandle = shader.FindKernel("OrbitingStars");
-        shader.GetKernelThreadGroupSizes(kernelHandle, out threadGroupSizeX, out _, out _);
-        groupSizeX = (int)((starCount + threadGroupSizeX - 1) / threadGroupSizeX);
+        public int starCount = 17;
+        public ComputeShader shader;
 
-        stars = new Transform[starCount];
-        for (int i = 0; i < starCount; i++)
+        public GameObject prefab;
+
+        private int kernelHandle;
+        private uint threadGroupSizeX;
+        private int groupSizeX;
+
+        private Transform[] stars;
+
+        private void Start()
         {
-            stars[i] = Instantiate(prefab, transform).transform;
-        }
-    }
+            this.kernelHandle = this.shader.FindKernel("OrbitingStars");
+            this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out this.threadGroupSizeX, out _, out _);
+            this.groupSizeX = (int)((this.starCount + this.threadGroupSizeX - 1) / this.threadGroupSizeX);
 
-    void Update()
-    {
+            this.stars = new Transform[this.starCount];
+            for (int i = 0; i < this.starCount; i++)
+            {
+                this.stars[i] = Instantiate(this.prefab, this.transform).transform;
+            }
+        }
+
+        private void Update()
+        {
         
+        }
     }
 }

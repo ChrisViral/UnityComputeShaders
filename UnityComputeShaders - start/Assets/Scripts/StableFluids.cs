@@ -3,104 +3,109 @@
 
 using UnityEngine;
 
-
-public class StableFluids : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public int resolution = 512;
-    public float viscosity = 1e-6f;
-    public float force = 300;
-    public float exponent = 200;
-    public Texture2D initial;
-    public ComputeShader compute;
-    public Material material;
-   
-    Vector2 previousInput;
-
-    int kernelAdvect;
-    int kernelForce;
-    int kernelProjectSetup;
-    int kernelProject;
-    int kernelDiffuse1;
-    int kernelDiffuse2;
-
-    int threadCountX { get { return (resolution + 7) / 8; } }
-    int threadCountY { get { return (resolution * Screen.height / Screen.width + 7) / 8; } }
-
-    int resolutionX { get { return threadCountX * 8; } }
-    int resolutionY { get { return threadCountY * 8; } }
-
-    // Vector field buffers
-    RenderTexture vfbRTV1;
-    RenderTexture vfbRTV2;
-    RenderTexture vfbRTV3;
-    RenderTexture vfbRTP1;
-    RenderTexture vfbRTP2;
-
-    // Color buffers (for double buffering)
-    RenderTexture colorRT1;
-    RenderTexture colorRT2;
-
-    RenderTexture CreateRenderTexture(int componentCount, int width = 0, int height = 0)
+    public class StableFluids : MonoBehaviour
     {
-        RenderTexture rt = new RenderTexture(width, height, 0);
-        rt.enableRandomWrite = true;
-        rt.Create();
-        return rt;
-    }
+        public int resolution = 512;
+        public float viscosity = 1e-6f;
+        public float force = 300;
+        public float exponent = 200;
+        public Texture2D initial;
+        public ComputeShader compute;
+        public Material material;
 
-    
-    void OnValidate()
-    {
-        resolution = Mathf.Max(resolution, 8);
-    }
+        private Vector2 previousInput;
 
-    void Start()
-    {
-        InitBuffers();
-        InitShader();
+        private int kernelAdvect;
+        private int kernelForce;
+        private int kernelProjectSetup;
+        private int kernelProject;
+        private int kernelDiffuse1;
+        private int kernelDiffuse2;
 
-        Graphics.Blit(initial, colorRT1);
-    }
+        private int threadCountX { get { return (this.resolution + 7) / 8; } }
 
-    void InitBuffers()
-    {
+        private int threadCountY { get { return (this.resolution * Screen.height / Screen.width + 7) / 8; } }
+
+        private int resolutionX { get { return this.threadCountX * 8; } }
+
+        private int resolutionY { get { return this.threadCountY * 8; } }
+
+        // Vector field buffers
+        private RenderTexture vfbRTV1;
+        private RenderTexture vfbRTV2;
+        private RenderTexture vfbRTV3;
+        private RenderTexture vfbRTP1;
+        private RenderTexture vfbRTP2;
+
+        // Color buffers (for double buffering)
+        private RenderTexture colorRT1;
+        private RenderTexture colorRT2;
+
+        private RenderTexture CreateRenderTexture(int componentCount, int width = 0, int height = 0)
+        {
+            RenderTexture rt = new(width, height, 0)
+            {
+                enableRandomWrite = true
+            };
+            rt.Create();
+            return rt;
+        }
+
+        private void OnValidate()
+        {
+            this.resolution = Mathf.Max(this.resolution, 8);
+        }
+
+        private void Start()
+        {
+            InitBuffers();
+            InitShader();
+
+            Graphics.Blit(this.initial, this.colorRT1);
+        }
+
+        private void InitBuffers()
+        {
         
-    }
+        }
 
-    void InitShader()
-    {
+        private void InitShader()
+        {
         
-    }
+        }
 
-    void OnDestroy()
-    {
+        private void OnDestroy()
+        {
         
-    }
+        }
 
-    void Update()
-    {
-        float dt = Time.deltaTime;
-        float dx = 1.0f / resolutionY;
+        private void Update()
+        {
+            float dt = Time.deltaTime;
+            float dx = 1.0f / this.resolutionY;
 
-        // Input point
-        Vector2 input = new Vector2(
-            (Input.mousePosition.x - Screen.width * 0.5f) / Screen.height,
-            (Input.mousePosition.y - Screen.height * 0.5f) / Screen.height
-        );
+            // Input point
+            Vector2 input = new(
+                (Input.mousePosition.x - Screen.width * 0.5f) / Screen.height,
+                (Input.mousePosition.y - Screen.height * 0.5f) / Screen.height
+            );
 
-        // Common variables
-        compute.SetFloat("Time", Time.time);
-        compute.SetFloat("DeltaTime", dt);
+            // Common variables
+            this.compute.SetFloat("Time", Time.time);
+            this.compute.SetFloat("DeltaTime", dt);
 
-        //Add code here
+            //Add code here
 
 
 
-        previousInput = input;
-    }
+            this.previousInput = input;
+        }
 
-    void OnRenderImage(RenderTexture source, RenderTexture destination)
-    {
-        Graphics.Blit(colorRT1, destination, material, 1);
+        private void OnRenderImage(RenderTexture source, RenderTexture destination)
+        {
+            Graphics.Blit(this.colorRT1, destination, this.material, 1);
+        }
     }
 }

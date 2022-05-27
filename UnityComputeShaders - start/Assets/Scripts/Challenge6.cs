@@ -1,153 +1,165 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class Challenge6 : MonoBehaviour
+namespace UnityComputeShaders
 {
-    struct GrassClump
+    [RequireComponent(typeof(Renderer), typeof(MeshFilter))]
+    public class Challenge6 : MonoBehaviour
     {
-        public Vector3 position;
-        public float lean;
-        public float trample;
-        public Quaternion quaternion;
-        public float noise;
-
-        public GrassClump( Vector3 pos)
+        private struct GrassClump
         {
-            position.x = pos.x;
-            position.y = pos.y;
-            position.z = pos.z;
-            lean = 0;
-            noise = Random.Range(0.5f, 1);
-            if (Random.value < 0.5f) noise = -noise;
-            quaternion = Quaternion.identity;
-            trample = 0;
+            public Vector3 position;
+            public float lean;
+            public float trample;
+            public Quaternion quaternion;
+            public float noise;
+
+            public GrassClump(Vector3 position)
+            {
+                this.position = position;
+                this.lean = 0f;
+                this.noise = Random.value;
+                if (this.noise < 0.5f)
+                {
+                    this.noise--;
+                }
+                this.quaternion = Quaternion.identity;
+                this.trample = 0f;
+            }
         }
-    }
-    int SIZE_GRASS_CLUMP = 10 * sizeof(float);
 
-    public Mesh mesh;
-    public Material material;
-    public Material visualizeNoise;
-    public bool viewNoise = false;
-    public ComputeShader shader;
-    [Range(0,1)]
-    public float density;
-    [Range(0.1f,3)]
-    public float scale;
-    [Range(10, 45)]
-    public float maxLean;
-    public Transform trampler;
-    [Range(0.1f,2)]
-    public float trampleRadius = 0.5f;
-    //TO DO: Add wind direction (0-360), speed (0-2)  and scale (10-1000)
+        private const int SIZE_GRASS_CLUMP = 10 * sizeof(float);
+        private const string GRASS_KERNEL  = "UpdateGrass";
 
-    ComputeBuffer clumpsBuffer;
-    ComputeBuffer argsBuffer;
-    GrassClump[] clumpsArray;
-    uint[] argsArray = new uint[] { 0, 0, 0, 0, 0 };
-    Bounds bounds;
-    int timeID;
-    int tramplePosID;
-    int groupSize;
-    int kernelUpdateGrass;
-    Vector4 pos = new Vector4();
-    Material groundMaterial;
+        private static readonly int WindID          = Shader.PropertyToID("wind");
+        private static readonly int ScaleID         = Shader.PropertyToID("_Scale");
+        private static readonly int ClumpsBufferID  = Shader.PropertyToID("clumpsBuffer");
+        private static readonly int MaxLeanID       = Shader.PropertyToID("maxLean");
+        private static readonly int TrampleRadiusID = Shader.PropertyToID("trampleRadius");
+        private static readonly int TramplePosID    = Shader.PropertyToID("tramplePos");
+        private static readonly int TimeID          = Shader.PropertyToID("time");
 
-    // Start is called before the first frame update
-    void Start()
-    {
-        bounds = new Bounds(Vector3.zero, new Vector3(30, 30, 30));
+        [SerializeField]
+        private Mesh mesh;
+        [SerializeField]
+        private Material material;
+        [SerializeField]
+        private Material visualizeNoise;
+        [SerializeField]
+        private bool viewNoise;
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, Range(0f, 1f)]
+        private float density;
+        [SerializeField, Range(0.1f, 3f)]
+        private float scale;
+        [SerializeField, Range(10f, 45f)]
+        private float maxLean;
+        [SerializeField]
+        private Transform trampler;
+        [SerializeField, Range(0.1f, 2f)]
+        private float trampleRadius = 0.5f;
+        //TO DO: Add wind direction (0-360), speed (0-2)  and scale (10-1000)
 
-        MeshRenderer renderer = GetComponent<MeshRenderer>();
-        groundMaterial = renderer.material;
-        
-        InitShader();
-    }
+        private ComputeBuffer clumpsBuffer;
+        private ComputeBuffer argsBuffer;
+        private GrassClump[] clumpsArray;
+        private readonly uint[] argsArray = new uint[5];
+        private Bounds bounds;
+        private int groupSize;
+        private int kernelUpdateGrass;
+        private Vector4 pos;
+        private Material groundMaterial;
 
-    private void OnValidate()
-    {
-        if (groundMaterial != null)
+        // Start is called before the first frame update
+        private void Start()
         {
-            MeshRenderer renderer = GetComponent<MeshRenderer>();
+            this.bounds = new(Vector3.zero, new(30f, 30f, 30f));
 
-            renderer.material = (viewNoise) ? visualizeNoise : groundMaterial;
+            this.groundMaterial = GetComponent<MeshRenderer>().material;
+
+            InitShader();
+        }
+
+        private void OnValidate()
+        {
+            if (!this.groundMaterial) return;
+
+            GetComponent<MeshRenderer>().material = this.viewNoise ? this.visualizeNoise : this.groundMaterial;
 
             //TO DO: Set wind vector
-            Vector4 wind = new Vector4();
-            shader.SetVector("wind", wind);
-            visualizeNoise.SetVector("wind", wind);
+            Vector4 wind = new();
+            this.shader.SetVector(WindID, wind);
+            this.visualizeNoise.SetVector(WindID, wind);
         }
-    }
 
-    void InitShader()
-    {
-        MeshFilter mf = GetComponent<MeshFilter>();
-        Bounds bounds = mf.sharedMesh.bounds;
-        Vector2 size = new Vector2(bounds.extents.x * transform.localScale.x, bounds.extents.z * transform.localScale.z);
-        
-        Vector2 clumps = size;
-        Vector3 vec = transform.localScale / 0.1f * density;
-        clumps.x *= vec.x;
-        clumps.y *= vec.z;
-
-        int total = (int)clumps.x * (int)clumps.y;
-
-        kernelUpdateGrass = shader.FindKernel("UpdateGrass");
-
-        uint threadGroupSize;
-        shader.GetKernelThreadGroupSizes(kernelUpdateGrass, out threadGroupSize, out _, out _);
-        groupSize = Mathf.CeilToInt((float)total / (float)threadGroupSize);
-        int count = groupSize * (int)threadGroupSize;
-
-        clumpsArray = new GrassClump[count];
-
-        for(int i=0; i<count; i++)
+        private void InitShader()
         {
-            Vector3 pos = new Vector3(Random.value * size.x * 2 - size.x, 0, Random.value * size.y * 2 - size.y);
-            clumpsArray[i] = new GrassClump(pos);
+            Bounds meshBounds = GetComponent<MeshFilter>().sharedMesh.bounds;
+            // ReSharper disable once LocalVariableHidesMember
+            Vector3 localScale = this.transform.localScale;
+            Vector2 size = new(meshBounds.extents.x * localScale.x, meshBounds.extents.z * localScale.z);
+
+            Vector2 clumps = size;
+            Vector3 vec = localScale * 10f * this.density;
+            clumps.x *= vec.x;
+            clumps.y *= vec.z;
+
+            int total = (int)clumps.x * (int)clumps.y;
+
+            this.kernelUpdateGrass = this.shader.FindKernel(GRASS_KERNEL);
+
+            this.shader.GetKernelThreadGroupSizes(this.kernelUpdateGrass, out uint threadGroupSize, out _, out _);
+            this.groupSize = Mathf.CeilToInt(total / (float)threadGroupSize);
+            int count = this.groupSize * (int)threadGroupSize;
+
+            this.clumpsArray = new GrassClump[count];
+
+            for(int i = 0; i < count; i++)
+            {
+                Vector3 position = new((Random.value * size.x * 2f) - size.x, 0, (Random.value * size.y * 2f) - size.y);
+                this.clumpsArray[i] = new(position);
+            }
+
+            this.clumpsBuffer = new(count, SIZE_GRASS_CLUMP);
+            this.clumpsBuffer.SetData(this.clumpsArray);
+
+            this.shader.SetBuffer(this.kernelUpdateGrass, ClumpsBufferID, this.clumpsBuffer);
+            this.shader.SetFloat(MaxLeanID, this.maxLean * Mathf.PI / 180);
+            this.shader.SetFloat(TrampleRadiusID, this.trampleRadius);
+            //TO DO: Set wind vector
+            Vector4 wind = new();
+            this.shader.SetVector(WindID, wind);
+
+            this.argsArray[0] = this.mesh.GetIndexCount(0);
+            this.argsArray[1] = (uint)count;
+            this.argsBuffer = new(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
+            this.argsBuffer.SetData(this.argsArray);
+
+            this.material.SetBuffer(ClumpsBufferID, this.clumpsBuffer);
+            this.material.SetFloat(ScaleID, this.scale);
+
+            this.visualizeNoise.SetVector(WindID, wind);
         }
 
-        clumpsBuffer = new ComputeBuffer(count, SIZE_GRASS_CLUMP);
-        clumpsBuffer.SetData(clumpsArray);
+        // Update is called once per frame
+        private void Update()
+        {
+            this.shader.SetFloat(TimeID, Time.time);
+            this.pos = this.trampler.position;
+            this.shader.SetVector(TramplePosID, this.pos);
 
-        shader.SetBuffer(kernelUpdateGrass, "clumpsBuffer", clumpsBuffer);
-        shader.SetFloat("maxLean", maxLean * Mathf.PI / 180);
-        shader.SetFloat("trampleRadius", trampleRadius);
-        //TO DO: Set wind vector
-        Vector4 wind = new Vector4();
-        shader.SetVector("wind", wind);
-        timeID = Shader.PropertyToID("time");
-        tramplePosID = Shader.PropertyToID("tramplePos");
+            this.shader.Dispatch(this.kernelUpdateGrass, this.groupSize, 1, 1);
 
-        argsArray[0] = mesh.GetIndexCount(0);
-        argsArray[1] = (uint)count;
-        argsBuffer = new ComputeBuffer(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-        argsBuffer.SetData(argsArray);
-
-        material.SetBuffer("clumpsBuffer", clumpsBuffer);
-        material.SetFloat("_Scale", scale);
-
-        visualizeNoise.SetVector("wind", wind);
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        shader.SetFloat(timeID, Time.time);
-        pos = trampler.position;
-        shader.SetVector(tramplePosID, pos);
-
-        shader.Dispatch(kernelUpdateGrass, groupSize, 1, 1);
-
-        if (!viewNoise) {
-            Graphics.DrawMeshInstancedIndirect(mesh, 0, material, bounds, argsBuffer);
+            if (!this.viewNoise)
+            {
+                Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.material, this.bounds, this.argsBuffer);
+            }
         }
-    }
 
-    private void OnDestroy()
-    {
-        clumpsBuffer.Release();
-        argsBuffer.Release();
+        private void OnDestroy()
+        {
+            this.clumpsBuffer?.Release();
+            this.argsBuffer?.Release();
+        }
     }
 }

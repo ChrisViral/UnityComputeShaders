@@ -1,116 +1,111 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class InstancedFlocking : MonoBehaviour
+namespace UnityComputeShaders
 {
-    public struct Boid
+    public class InstancedFlocking : MonoBehaviour
     {
-        public Vector3 position;
-        public Vector3 direction;
-        public float noise_offset;
-
-        public Boid(Vector3 pos, Vector3 dir, float offset)
+        public struct Boid
         {
-            position.x = pos.x;
-            position.y = pos.y;
-            position.z = pos.z;
-            direction.x = dir.x;
-            direction.y = dir.y;
-            direction.z = dir.z;
-            noise_offset = offset;
+            public Vector3 position;
+            public Vector3 direction;
+            public float noise_offset;
+
+            public Boid(Vector3 pos, Vector3 dir, float offset)
+            {
+                this.position.x = pos.x;
+                this.position.y = pos.y;
+                this.position.z = pos.z;
+                this.direction.x = dir.x;
+                this.direction.y = dir.y;
+                this.direction.z = dir.z;
+                this.noise_offset = offset;
+            }
         }
-    }
-    const int SIZE_BOID = 7 * sizeof(float);
+
+        private const int SIZE_BOID = 7 * sizeof(float);
     
-    public ComputeShader shader;
+        public ComputeShader shader;
 
-    public float rotationSpeed = 1f;
-    public float boidSpeed = 1f;
-    public float neighbourDistance = 1f;
-    public float boidSpeedVariation = 1f;
-    public Mesh boidMesh;
-    public Material boidMaterial;
-    public int boidsCount;
-    public float spawnRadius;
-    public Transform target;
+        public float rotationSpeed = 1f;
+        public float boidSpeed = 1f;
+        public float neighbourDistance = 1f;
+        public float boidSpeedVariation = 1f;
+        public Mesh boidMesh;
+        public Material boidMaterial;
+        public int boidsCount;
+        public float spawnRadius;
+        public Transform target;
 
-    int kernelHandle;
-    ComputeBuffer boidsBuffer;
-    ComputeBuffer argsBuffer;
-    uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
-    Boid[] boidsArray;
-    int groupSizeX;
-    int numOfBoids;
-    Bounds bounds;
+        private int kernelHandle;
+        private ComputeBuffer boidsBuffer;
+        private ComputeBuffer argsBuffer;
+        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
+        private Boid[] boidsArray;
+        private int groupSizeX;
+        private int numOfBoids;
+        private Bounds bounds;
 
-    void Start()
-    {
-        kernelHandle = shader.FindKernel("CSMain");
-
-        uint x;
-        shader.GetKernelThreadGroupSizes(kernelHandle, out x, out _, out _);
-        groupSizeX = Mathf.CeilToInt((float)boidsCount / (float)x);
-        numOfBoids = groupSizeX * (int)x;
-
-        bounds = new Bounds(Vector3.zero, Vector3.one * 1000);
-
-        InitBoids();
-        InitShader();
-    }
-
-    private void InitBoids()
-    {
-        boidsArray = new Boid[numOfBoids];
-
-        for (int i = 0; i < numOfBoids; i++)
+        private void Start()
         {
-            Vector3 pos = transform.position + Random.insideUnitSphere * spawnRadius;
-            Quaternion rot = Quaternion.Slerp(transform.rotation, Random.rotation, 0.3f);
-            float offset = Random.value * 1000.0f;
-            boidsArray[i] = new Boid(pos, rot.eulerAngles, offset);
-        }
-    }
+            this.kernelHandle = this.shader.FindKernel("CSMain");
 
-    void InitShader()
-    {
-        boidsBuffer = new ComputeBuffer(numOfBoids, SIZE_BOID);
-        boidsBuffer.SetData(boidsArray);
+            this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out _, out _);
+            this.groupSizeX = Mathf.CeilToInt(this.boidsCount / (float)x);
+            this.numOfBoids = this.groupSizeX * (int)x;
 
-        //Initialize args buffer
+            this.bounds = new(Vector3.zero, Vector3.one * 1000);
 
-
-        shader.SetBuffer(this.kernelHandle, "boidsBuffer", boidsBuffer);
-        shader.SetFloat("rotationSpeed", rotationSpeed);
-        shader.SetFloat("boidSpeed", boidSpeed);
-        shader.SetFloat("boidSpeedVariation", boidSpeedVariation);
-        shader.SetVector("flockPosition", target.transform.position);
-        shader.SetFloat("neighbourDistance", neighbourDistance);
-        shader.SetInt("boidsCount", numOfBoids);
-
-        boidMaterial.SetBuffer("boidsBuffer", boidsBuffer);
-    }
-
-    void Update()
-    {
-        shader.SetFloat("time", Time.time);
-        shader.SetFloat("deltaTime", Time.deltaTime);
-
-        shader.Dispatch(this.kernelHandle, groupSizeX, 1, 1);
-
-        Graphics.DrawMeshInstancedIndirect(boidMesh, 0, boidMaterial, bounds, argsBuffer, 0);
-    }
-
-    void OnDestroy()
-    {
-        if (boidsBuffer != null)
-        {
-            boidsBuffer.Dispose();
+            InitBoids();
+            InitShader();
         }
 
-        if (argsBuffer != null)
+        private void InitBoids()
         {
-            argsBuffer.Dispose();
+            this.boidsArray = new Boid[this.numOfBoids];
+
+            for (int i = 0; i < this.numOfBoids; i++)
+            {
+                Vector3 pos = this.transform.position + Random.insideUnitSphere * this.spawnRadius;
+                Quaternion rot = Quaternion.Slerp(this.transform.rotation, Random.rotation, 0.3f);
+                float offset = Random.value * 1000.0f;
+                this.boidsArray[i] = new(pos, rot.eulerAngles, offset);
+            }
+        }
+
+        private void InitShader()
+        {
+            this.boidsBuffer = new(this.numOfBoids, SIZE_BOID);
+            this.boidsBuffer.SetData(this.boidsArray);
+
+            //Initialize args buffer
+
+
+            this.shader.SetBuffer(this.kernelHandle, "boidsBuffer", this.boidsBuffer);
+            this.shader.SetFloat("rotationSpeed", this.rotationSpeed);
+            this.shader.SetFloat("boidSpeed", this.boidSpeed);
+            this.shader.SetFloat("boidSpeedVariation", this.boidSpeedVariation);
+            this.shader.SetVector("flockPosition", this.target.transform.position);
+            this.shader.SetFloat("neighbourDistance", this.neighbourDistance);
+            this.shader.SetInt("boidsCount", this.numOfBoids);
+
+            this.boidMaterial.SetBuffer("boidsBuffer", this.boidsBuffer);
+        }
+
+        private void Update()
+        {
+            this.shader.SetFloat("time", Time.time);
+            this.shader.SetFloat("deltaTime", Time.deltaTime);
+
+            this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
+
+            Graphics.DrawMeshInstancedIndirect(this.boidMesh, 0, this.boidMaterial, this.bounds, this.argsBuffer);
+        }
+
+        private void OnDestroy()
+        {
+            this.boidsBuffer?.Dispose();
+
+            this.argsBuffer?.Dispose();
         }
     }
 }

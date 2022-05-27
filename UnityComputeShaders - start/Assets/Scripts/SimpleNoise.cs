@@ -1,49 +1,53 @@
 ﻿using UnityEngine;
-using System.Collections;
 
-public class SimpleNoise : MonoBehaviour
+namespace UnityComputeShaders
 {
-
-    public ComputeShader shader;
-    public int texResolution = 256;
-
-    Renderer rend;
-    RenderTexture outputTexture;
-
-    int kernelHandle;
-
-    // Use this for initialization
-    void Start()
+    public class SimpleNoise : MonoBehaviour
     {
-        outputTexture = new RenderTexture(texResolution, texResolution, 0);
-        outputTexture.enableRandomWrite = true;
-        outputTexture.Create();
 
-        rend = GetComponent<Renderer>();
-        rend.enabled = true;
+        public ComputeShader shader;
+        public int texResolution = 256;
 
-        InitShader();
-    }
+        private Renderer rend;
+        private RenderTexture outputTexture;
 
-    private void InitShader()
-    {
-        kernelHandle = shader.FindKernel("CSMain");
+        private int kernelHandle;
 
-        shader.SetInt("texResolution", texResolution);
-        shader.SetTexture(kernelHandle, "Result", outputTexture);
+        // Use this for initialization
+        private void Start()
+        {
+            this.outputTexture = new(this.texResolution, this.texResolution, 0)
+            {
+                enableRandomWrite = true
+            };
+            this.outputTexture.Create();
 
-        rend.material.SetTexture("_MainTex", outputTexture);
-    }
+            this.rend = GetComponent<Renderer>();
+            this.rend.enabled = true;
 
-    private void DispatchShader(int x, int y)
-    {
-        shader.SetFloat("time", Time.time);
-        shader.Dispatch(kernelHandle, x, y, 1);
-    }
+            InitShader();
+        }
 
-    void Update()
-    {
-        DispatchShader(texResolution / 8, texResolution / 8);
+        private void InitShader()
+        {
+            this.kernelHandle = this.shader.FindKernel("CSMain");
+
+            this.shader.SetInt("texResolution", this.texResolution);
+            this.shader.SetTexture(this.kernelHandle, "Result", this.outputTexture);
+
+            this.rend.material.SetTexture("_MainTex", this.outputTexture);
+        }
+
+        private void DispatchShader(int x, int y)
+        {
+            this.shader.SetFloat("time", Time.time);
+            this.shader.Dispatch(this.kernelHandle, x, y, 1);
+        }
+
+        private void Update()
+        {
+            DispatchShader(this.texResolution / 8, this.texResolution / 8);
+        }
     }
 }
 

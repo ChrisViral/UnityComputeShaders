@@ -1,54 +1,66 @@
 ﻿using UnityEngine;
-using System.Collections;
+using UnityEngine.Serialization;
 
-public class Challenge1 : MonoBehaviour
+namespace UnityComputeShaders
 {
-
-    public ComputeShader shader;
-    public int texResolution = 1024;
-
-    Renderer rend;
-    RenderTexture outputTexture;
-
-    int kernelHandle;
-
-    // Use this for initialization
-    void Start()
+    [RequireComponent(typeof(Renderer))]
+    public class Challenge1 : MonoBehaviour
     {
-        outputTexture = new RenderTexture(texResolution, texResolution, 0);
-        outputTexture.enableRandomWrite = true;
-        outputTexture.Create();
+        private const string KERNEL = "Square";
 
-        rend = GetComponent<Renderer>();
-        rend.enabled = true;
+        private static readonly int ResultID  = Shader.PropertyToID("Result");
+        private static readonly int MainTexID = Shader.PropertyToID("_MainTex");
 
-        InitShader();
-    }
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, FormerlySerializedAs("texResolution")]
+        private int textureResolution = 1024;
 
-    private void InitShader()
-    {
-        kernelHandle = shader.FindKernel("Square");
+        private new Renderer renderer;
+        private RenderTexture outputTexture;
 
-		//Create a Vector4 with parameters x, y, width, height
-        //Pass this to the shader using SetVector
-        
-        shader.SetTexture(kernelHandle, "Result", outputTexture);
-       
-        rend.material.SetTexture("_MainTex", outputTexture);
+        private int kernelHandle;
 
-        DispatchShader(texResolution / 8, texResolution / 8);
-    }
-
-    private void DispatchShader(int x, int y)
-    {
-        shader.Dispatch(kernelHandle, x, y, 1);
-    }
-
-    void Update()
-    {
-        if (Input.GetKeyUp(KeyCode.U))
+        // Use this for initialization
+        private void Start()
         {
-            DispatchShader(texResolution / 8, texResolution / 8);
+            this.outputTexture = new(this.textureResolution, this.textureResolution, 0)
+            {
+                enableRandomWrite = true
+            };
+            this.outputTexture.Create();
+
+            this.renderer = GetComponent<Renderer>();
+            this.renderer.enabled = true;
+
+            InitShader();
+        }
+
+        private void InitShader()
+        {
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
+
+            //Create a Vector4 with parameters x, y, width, height
+            //Pass this to the shader using SetVector
+
+            this.shader.SetTexture(this.kernelHandle, ResultID, this.outputTexture);
+
+            this.renderer.material.SetTexture(MainTexID, this.outputTexture);
+
+            DispatchShader(this.textureResolution / 8, this.textureResolution / 8);
+        }
+
+        private void DispatchShader(int x, int y)
+        {
+            this.shader.Dispatch(this.kernelHandle, x, y, 1);
+        }
+
+        private void Update()
+        {
+            if (Input.GetKeyUp(KeyCode.U))
+            {
+                DispatchShader(this.textureResolution / 8, this.textureResolution / 8);
+            }
         }
     }
 }

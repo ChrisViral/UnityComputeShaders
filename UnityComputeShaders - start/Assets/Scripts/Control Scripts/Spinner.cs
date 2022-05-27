@@ -1,18 +1,12 @@
-﻿using System.Collections;
-using System.Collections.Generic;
-using UnityEngine;
+﻿using UnityEngine;
 
-public class Spinner : MonoBehaviour
+namespace UnityComputeShaders
 {
-    // Start is called before the first frame update
-    void Start()
+    public class Spinner : MonoBehaviour
     {
-        
-    }
-
-    // Update is called once per frame
-    void Update()
-    {
-        transform.Rotate(Vector3.up, 2);
+        private void Update()
+        {
+            this.transform.Rotate(Vector3.up, 2f);
+        }
     }
 }
