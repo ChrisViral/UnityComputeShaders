@@ -3,20 +3,21 @@
 
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float4> Result;
-int texResolution;
+RWTexture2D<float4> result;
+int textureResolution;
 float time;
 
-float random (float2 pt) {
-    const float a = 12.9898;
-    const float b = 78.233;
+float random(const float2 pos, const float seed)
+{
+    const float2 n = float2(12.9898, 78.233);
     const float c = 43758.543123;
-    return frac(sin(dot(pt, float2(a, b))) * c );
+    return frac(sin(dot(pos, n) + seed) * c);
 }
 
 [numthreads(8,8,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    float4 white = 1;
-    Result[id.xy] = random(((float2)id.xy)/(float)texResolution) * white;
+    const float4 white = 1;
+    const float2 position = id.xy / (float)textureResolution;
+    result[id.xy] = random(position, time) * white;
 }

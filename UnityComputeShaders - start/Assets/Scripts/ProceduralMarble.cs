@@ -4,59 +4,68 @@ namespace UnityComputeShaders
 {
     public class ProceduralMarble : MonoBehaviour
     {
+        private const string KERNEL = "CSMain";
 
-        public ComputeShader shader;
-        public int texResolution = 256;
+        private static readonly int TextureResolutionID = Shader.PropertyToID("textureResolution");
+        private static readonly int ResultID            = Shader.PropertyToID("result");
+        private static readonly int MarbleID            = Shader.PropertyToID("marble");
+        private static readonly int MainTexID           = Shader.PropertyToID("_MainTex");
 
-        private Renderer rend;
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField]
+        private int textureResolution = 1024;
+
+        private new Renderer renderer;
         private RenderTexture outputTexture;
-
         private int kernelHandle;
         private bool marble = true;
 
         // Use this for initialization
         private void Start()
         {
-            this.outputTexture = new(this.texResolution, this.texResolution, 0)
+            this.outputTexture = new(this.textureResolution, this.textureResolution, 0)
             {
                 enableRandomWrite = true
             };
             this.outputTexture.Create();
 
-            this.rend = GetComponent<Renderer>();
-            this.rend.enabled = true;
+            this.renderer = GetComponent<Renderer>();
+            this.renderer.enabled = true;
 
             InitShader();
         }
 
-        private void InitShader()
+        private void OnDestroy()
         {
-            this.kernelHandle = this.shader.FindKernel("CSMain");
-
-            this.shader.SetInt("texResolution", this.texResolution);
-            this.shader.SetTexture(this.kernelHandle, "Result", this.outputTexture);
-
-            this.rend.material.SetTexture("_MainTex", this.outputTexture);
-
-            this.shader.SetBool("marble", this.marble);
-            this.marble = !this.marble;
-
-            DispatchShader(this.texResolution / 8, this.texResolution / 8);
-        }
-
-        private void DispatchShader(int x, int y)
-        {
-            this.shader.Dispatch(this.kernelHandle, x, y, 1);
+            this.outputTexture.Release();
         }
 
         private void Update()
         {
-            if (Input.GetKeyUp(KeyCode.U))
+            if (Input.GetKeyDown(KeyCode.U))
             {
-                this.shader.SetBool("marble", this.marble);
                 this.marble = !this.marble;
-                DispatchShader(this.texResolution / 8, this.texResolution / 8);
+                Dispatch();
             }
+        }
+
+        private void InitShader()
+        {
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
+
+            this.shader.SetInt(TextureResolutionID, this.textureResolution);
+            this.shader.SetBool(MarbleID, this.marble);
+            this.shader.SetTexture(this.kernelHandle, ResultID, this.outputTexture);
+            this.renderer.material.SetTexture(MainTexID, this.outputTexture);
+            Dispatch();
+        }
+
+        private void Dispatch()
+        {
+            this.shader.SetBool(MarbleID, this.marble);
+            int count = this.textureResolution / 8;
+            this.shader.Dispatch(this.kernelHandle, count, count, 1);
         }
     }
 }
