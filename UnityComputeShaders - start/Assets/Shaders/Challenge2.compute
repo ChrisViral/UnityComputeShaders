@@ -1,49 +1,54 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
-#define PI2 6.28318530718
+#define TWO_PI 6.28318530718
 
 // Create a RenderTexture with enableRandomWrite flag and set it
 // with cs.SetTexture
-RWTexture2D<float4> Result;
-int texResolution;
+RWTexture2D<float4> result;
+int textureResolution;
 
-float4 fillColor;
-float4 clearColor;
+float4 fillColour;
+float4 clearColour;
 int sides;
 float time;
 
 #include "noiseSimplex.cginc"
 
-float polygon(float2 pt, float2 center, float radius, int sides, float rotate, float edge_thickness){
-    pt -= center;
+float polygon(float2 pos, const float2 center, const float radius, const int sides, const float rotate, const float smoothing)
+{
+    pos -= center;
 
     //Angle and radius from the current pixel /
-    float theta = atan2(pt.y, pt.x) + rotate;
-    float rad = PI2/float(sides);
+    const float theta = atan2(pos.y, pos.x) + rotate;
+    const float rad   = TWO_PI / float(sides);
+    const float edge  = radius * smoothing;
 
     // Shaping function that modulate the distance
-    float d = cos(floor(0.5 + theta/rad)*rad-theta)*length(pt);
+    const float d = cos((floor(0.5 + (theta / rad)) * rad) - theta) * length(pos);
 
-    return 1.0 - smoothstep(radius, radius + edge_thickness, d);
+    return 1 - smoothstep(radius, radius + edge, d);
 }
 
 [numthreads(8,8,1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-	//1. Change the coordinate space of id.xy from (0,0)-(texResolution,texResolution) to (-0.5, -0.5)-(0.5,0.5)
-	
-	//2. Set the center to (0,0) and radius to 0.15
-	
-	//3. Call polygon using the pt you calculated at step 1, the center and radius from step 2. 
-	//   sides and time are passed from the C# script
-    
+    //1. Change the coordinate space of id.xy from (0,0)-(texResolution,texResolution) to (-0.5, -0.5)-(0.5,0.5)
+
+    const float2 pos = id.xy / (float)textureResolution;
+
+    //2. Set the center to (0,0) and radius to 0.15
+
+    //3. Call polygon using the pt you calculated at step 1, the center and radius from step 2.
+    //   sides and time are passed from the C# script
+
+    const float inPolygon = polygon(pos, 0.5, 0.15, sides, time, 0.02);
+
     //4. Set noise. Use the snoise function and pt * 100
-    
+    const float noise = snoise((pos * 100) + time);
+
     //5. Use the HLSL function lerp to blend between clearColor and fillColor*noise using the return
     //   value from step 3
-    
-    float4 color = 1;
 
-    Result[id.xy] = color;
+    result[id.xy] = lerp(clearColour, fillColour * noise, inPolygon);
 }
