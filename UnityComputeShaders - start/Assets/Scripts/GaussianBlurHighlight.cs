@@ -3,7 +3,7 @@
 namespace UnityComputeShaders
 {
     [ExecuteInEditMode]
-    public class GaussianBlurHighlight : BaseCompletePP
+    public class GaussianBlurHighlight : BasePP
     {
         [Range(0, 50)]
         public int blurRadius = 20;
@@ -70,7 +70,7 @@ namespace UnityComputeShaders
         protected override void CreateTextures()
         {
             base.CreateTextures();
-            this.shader.SetTexture(this.kernelHorzPassID, "source", this.renderedSource);
+            this.shader.SetTexture(this.kernelHorzPassID, "source", this.initial);
 
             CreateTexture(out this.horzOutput);
 
@@ -97,11 +97,11 @@ namespace UnityComputeShaders
             this.shader.SetFloat("shade", this.shade);
         }
 
-        protected override void DispatchWithSource(ref RenderTexture source, ref RenderTexture destination)
+        protected override void DispatchWithSource(RenderTexture source, RenderTexture destination)
         {
             if (!this.init) return;
 
-            Graphics.Blit(source, this.renderedSource);
+            Graphics.Blit(source, this.initial);
 
             this.shader.Dispatch(this.kernelHorzPassID, this.groupSize.x, this.groupSize.y, 1);
             this.shader.Dispatch(this.kernelHandle, this.groupSize.x, this.groupSize.y, 1);
@@ -117,17 +117,15 @@ namespace UnityComputeShaders
             }
             else
             {
-                if (this.trackedObject && this.camera)
+                if (this.trackedObject && this.Camera)
                 {
-                    Vector3 pos = this.camera.WorldToScreenPoint(this.trackedObject.position);
+                    Vector3 pos = this.Camera.WorldToScreenPoint(this.trackedObject.position);
                     this.center.x = pos.x;
                     this.center.y = pos.y;
                     this.shader.SetVector("center", this.center);
                 }
-                bool resChange = false;
-                CheckResolution(out resChange);
-                if (resChange) SetProperties();
-                DispatchWithSource(ref source, ref destination);
+                if (CheckResolutionChanged()) SetProperties();
+                DispatchWithSource(source, destination);
             }
         }
 

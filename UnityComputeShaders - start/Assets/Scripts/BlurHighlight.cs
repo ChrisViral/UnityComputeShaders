@@ -3,31 +3,36 @@
 namespace UnityComputeShaders
 {
     [ExecuteInEditMode]
-    public class BlurHighlight : BaseCompletePP
+    public class BlurHighlight : BasePP
     {
-        private static readonly int RadiusID    = Shader.PropertyToID("radius");
-        private static readonly int EdgeWidthID = Shader.PropertyToID("edgeWidth");
-        private static readonly int ShadeID     = Shader.PropertyToID("shade");
-        private static readonly int CenterID    = Shader.PropertyToID("center");
+        private const string HORIZONTAL_KERNEL = "HorizontalPass";
 
-        [SerializeField, Range(0, 50)]
-        private int blurRadius = 20;
-        [SerializeField, Range(0f, 100f)]
-        private float radius = 10f;
-        [SerializeField, Range(0f, 100f)]
-        private float softenEdge = 30f;
+        private static readonly int RadiusID         = Shader.PropertyToID("radius");
+        private static readonly int EdgeID           = Shader.PropertyToID("edge");
+        private static readonly int ShadeID          = Shader.PropertyToID("shade");
+        private static readonly int CenterID         = Shader.PropertyToID("center");
+        private static readonly int HorizontalPassID = Shader.PropertyToID("horizontalPass");
+        private static readonly int BlurRadiusID     = Shader.PropertyToID("blurRadius");
+
+        [SerializeField, Range(0.01f, 1f)]
+        private float radius = 0.1f;
         [SerializeField, Range(0f, 1f)]
-        private float shade = 0.5f;
+        private float smoothing = 0.1f;
+        [SerializeField, Range(0f, 1f)]
+        private float shade = 0.7f;
         [SerializeField]
         private Transform trackedObject;
+        [SerializeField, Range(1, 50)]
+        private int blurRadius = 20;
 
-        private Vector4 center;
+        private RenderTexture horizontalOutput;
+        private int horizontalHandle;
 
         protected override string KernelName => "Highlight";
 
         private void OnValidate()
         {
-            if(!this.init)
+            if (!this.init)
             {
                 Init();
             }
@@ -35,48 +40,59 @@ namespace UnityComputeShaders
             SetProperties();
         }
 
-        protected void SetProperties()
+        protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
-            float rad = (this.radius / 100f) * this.textureSize.y;
-            this.shader.SetFloat(RadiusID, rad);
-            this.shader.SetFloat(EdgeWidthID, rad * this.softenEdge / 100f);
-            this.shader.SetFloat(ShadeID, this.shade);
+            if (this.trackedObject)
+            {
+                Vector2 position = this.Camera.WorldToScreenPoint(this.trackedObject.position);
+                this.shader.SetVector(CenterID, position);
+            }
+
+            base.OnRenderImage(source, destination);
         }
 
-        protected override void DispatchWithSource(ref RenderTexture source, ref RenderTexture destination)
+        protected override void Init()
         {
-            if (!this.init) return;
+            this.horizontalHandle = this.shader.FindKernel(HORIZONTAL_KERNEL);
+            base.Init();
+        }
 
-            Graphics.Blit(source, this.renderedSource);
+        protected override void CreateTextures()
+        {
+            if (!this.shader) return;
 
+            base.CreateTextures();
+            this.shader.SetTexture(this.horizontalHandle, SourceID, this.initial);
+
+            CreateTexture(out this.horizontalOutput);
+            this.shader.SetTexture(this.kernelHandle, HorizontalPassID, this.horizontalOutput);
+            this.shader.SetTexture(this.horizontalHandle, HorizontalPassID, this.horizontalOutput);
+        }
+
+        protected override void ClearTextures()
+        {
+            ClearTexture(ref this.horizontalOutput);
+            base.ClearTextures();
+        }
+
+        protected override void DispatchWithSource(RenderTexture source, RenderTexture destination)
+        {
+            Graphics.Blit(source, this.initial);
+            this.shader.Dispatch(this.horizontalHandle, this.groupSize.x, this.groupSize.y, 1);
             this.shader.Dispatch(this.kernelHandle, this.groupSize.x, this.groupSize.y, 1);
-
             Graphics.Blit(this.output, destination);
         }
 
-        protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
+        protected override void OnResolutionChanged() => SetProperties();
+
+        protected void SetProperties()
         {
-            if (!this.shader)
-            {
-                Graphics.Blit(source, destination);
-                return;
-            }
-
-            if (this.trackedObject && this.camera)
-            {
-                Vector3 pos = this.camera.WorldToScreenPoint(this.trackedObject.position);
-                this.center.x = pos.x;
-                this.center.y = pos.y;
-                this.shader.SetVector(CenterID, this.center);
-            }
-
-            CheckResolution(out bool resChange);
-            if (resChange)
-            {
-                SetProperties();
-            }
-
-            DispatchWithSource(ref source, ref destination);
+            // ReSharper disable once LocalVariableHidesMember
+            float radius = this.radius * this.textureSize.y;
+            this.shader.SetFloat(RadiusID, radius);
+            this.shader.SetFloat(EdgeID, radius * this.smoothing);
+            this.shader.SetFloat(ShadeID, this.shade);
+            this.shader.SetInt(BlurRadiusID, this.blurRadius);
         }
     }
 }

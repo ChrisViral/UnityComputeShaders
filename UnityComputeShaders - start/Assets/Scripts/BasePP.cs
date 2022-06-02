@@ -5,22 +5,40 @@ namespace UnityComputeShaders
     [RequireComponent(typeof(Camera))]
     public class BasePP : MonoBehaviour
     {
+        protected static readonly int SourceID = Shader.PropertyToID("source");
+        protected static readonly int OutputID = Shader.PropertyToID("output");
+
         [SerializeField]
         protected ComputeShader shader;
 
-        protected virtual string KernelName => "CSMain";
-
         protected Vector2Int textureSize;
         protected Vector2Int groupSize;
-        protected new Camera camera;
 
+        protected RenderTexture initial;
         protected RenderTexture output;
-        protected RenderTexture renderedSource;
 
-        protected int kernelHandle = -1;
+        protected int kernelHandle;
         protected bool init;
 
-        protected virtual void Init()
+        private new Camera camera;
+        protected Camera Camera
+        {
+            get
+            {
+                if (!this.camera)
+                {
+                    this.camera = GetComponent<Camera>();
+                }
+
+                return this.camera;
+            }
+        }
+
+        protected virtual string KernelName => "CSMain";
+
+        protected virtual void OnDestroy() => ClearTextures();
+
+        protected virtual void OnEnable()
         {
             if (!SystemInfo.supportsComputeShaders)
             {
@@ -34,19 +52,66 @@ namespace UnityComputeShaders
                 return;
             }
 
-            this.kernelHandle = this.shader.FindKernel(this.KernelName);
+            Init();
+        }
 
-            this.camera = GetComponent<Camera>();
+        protected virtual void OnDisable() => ClearTextures();
 
-            if (!this.camera)
+        protected virtual void OnRenderImage(RenderTexture source, RenderTexture destination)
+        {
+            if (!this.init || !this.shader)
             {
-                Debug.LogError("Object has no Camera");
+                Graphics.Blit(source, destination);
                 return;
             }
 
-            CreateTextures();
+            if (CheckResolutionChanged())
+            {
+                OnResolutionChanged();
+            }
 
+            DispatchWithSource(source, destination);
+        }
+
+        protected virtual void Init()
+        {
+            this.kernelHandle = this.shader.FindKernel(this.KernelName);
+
+            CreateTextures();
             this.init = true;
+        }
+
+        protected virtual void CreateTextures()
+        {
+            if (!this.shader) return;
+
+            this.textureSize = new(this.Camera.pixelWidth, this.Camera.pixelHeight);
+
+            this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out uint y, out _);
+            this.groupSize = new(Mathf.CeilToInt(this.textureSize.x / (float)x),
+                                 Mathf.CeilToInt(this.textureSize.y / (float)y));
+
+            CreateTexture(out this.output);
+            CreateTexture(out this.initial);
+
+            this.shader.SetTexture(this.kernelHandle, OutputID, this.output);
+            this.shader.SetTexture(this.kernelHandle, SourceID, this.initial);
+        }
+
+        protected void CreateTexture(out RenderTexture texture)
+        {
+            texture = new(this.textureSize.x, this.textureSize.y, 0)
+            {
+                enableRandomWrite = true
+            };
+            texture.Create();
+        }
+
+        protected virtual void ClearTextures()
+        {
+            ClearTexture(ref this.initial);
+            ClearTexture(ref this.output);
+            this.init = false;
         }
 
         protected void ClearTexture(ref RenderTexture textureToClear)
@@ -57,65 +122,21 @@ namespace UnityComputeShaders
             textureToClear = null;
         }
 
-        protected virtual void ClearTextures()
+        protected virtual void DispatchWithSource(RenderTexture source, RenderTexture destination)
         {
-            ClearTexture(ref this.output);
-            ClearTexture(ref this.renderedSource);
+            Graphics.Blit(source, this.initial);
+            this.shader.Dispatch(this.kernelHandle, this.groupSize.x, this.groupSize.y, 1);
+            Graphics.Blit(this.output, destination);
         }
 
-        protected void CreateTexture(out RenderTexture textureToMake, int divide=1)
+        protected bool CheckResolutionChanged()
         {
-            textureToMake = new(this.textureSize.x/divide, this.textureSize.y/divide, 0)
-            {
-                enableRandomWrite = true
-            };
-            textureToMake.Create();
+            if (this.textureSize.x == this.camera.pixelWidth && this.textureSize.y == this.camera.pixelHeight) return false;
+
+            CreateTextures();
+            return true;
         }
 
-
-        protected virtual void CreateTextures()
-        {
-
-        }
-
-        protected virtual void OnEnable()
-        {
-            Init();
-        }
-
-        protected virtual void OnDisable()
-        {
-            ClearTextures();
-            this.init = false;
-        }
-
-        protected virtual void OnDestroy()
-        {
-            ClearTextures();
-            this.init = false;
-        }
-
-        protected virtual void DispatchWithSource(ref RenderTexture source, ref RenderTexture destination)
-        {
-
-        }
-
-        protected void CheckResolution(out bool resChange )
-        {
-            resChange = false;
-        }
-
-        protected virtual void OnRenderImage(RenderTexture source, RenderTexture destination)
-        {
-            if (!this.init || !this.shader)
-            {
-                Graphics.Blit(source, destination);
-                return;
-            }
-
-            CheckResolution(out _);
-            DispatchWithSource(ref source, ref destination);
-        }
-
+        protected virtual void OnResolutionChanged() { }
     }
 }

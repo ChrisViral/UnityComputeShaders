@@ -22,7 +22,7 @@ namespace UnityComputeShaders
             // Don’t update position automatically
             this.agent.updatePosition = false;
         }
-        
+
         private void Update()
         {
             if (Input.GetMouseButtonDown(0))

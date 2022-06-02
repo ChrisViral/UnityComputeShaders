@@ -7,7 +7,7 @@ namespace UnityComputeShaders
         [SerializeField]
         private Transform target;    //the target object
         [SerializeField]
-        private float speed = 10f; //a speed modifier
+        private float speed = 10f;   //a speed modifier
 
         private Vector3 point;      //the coord to the point where the camera looks at
 

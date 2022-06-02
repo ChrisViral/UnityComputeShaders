@@ -39,7 +39,7 @@ namespace UnityComputeShaders
 
             this.material.SetVector(PositionID, this.transform.position);
         }
-        
+
         private void Update()
         {
             if (Input.GetMouseButtonDown(0))

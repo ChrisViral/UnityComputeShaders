@@ -4,7 +4,7 @@ using UnityEngine.Serialization;
 namespace UnityComputeShaders
 {
     [ExecuteInEditMode]
-    public class Challenge3 : BaseCompletePP
+    public class Challenge3 : BasePP
     {
         private static readonly int TintHeightID   = Shader.PropertyToID("tintHeight");
         private static readonly int EdgeWidthID    = Shader.PropertyToID("edgeWidth");
@@ -53,8 +53,8 @@ namespace UnityComputeShaders
             }
             else
             {
-                CheckResolution(out _);
-                DispatchWithSource(ref source, ref destination);
+                CheckResolutionChanged();
+                DispatchWithSource(source, destination);
             }
         }
 

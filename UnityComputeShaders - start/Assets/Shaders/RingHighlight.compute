@@ -4,20 +4,20 @@
 Texture2D<float4> source;
 RWTexture2D<float4> output;
 float radius;
-float edgeWidth;
+float edge;
 float shade;
 float4 center;
 
-float inCircle( float2 pt, float2 center, float radius, float edgeWidth ){
-    float len = length(pt - center);
-    return 1.0 - smoothstep(radius-edgeWidth, radius, len);
+float circle(const float2 pos, const float2 center, const float radius, const float edge)
+{
+    const float len = length(pos - center);
+    return 1 - smoothstep(radius - edge, radius, len);
 }
 
 [numthreads(8, 8, 1)]
 void Highlight(uint3 id : SV_DispatchThreadID)
 {
-    float4 color = source[id.xy];
-    
-    output[id.xy] = color;
-
+    const float inCircle = circle(id.xy, center.xy, radius, edge);
+    const float effectiveShade = lerp(shade, 1, inCircle);
+    output[id.xy] = source[id.xy] * effectiveShade;
 }

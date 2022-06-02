@@ -1,32 +1,62 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel HorzPass
+#pragma kernel HorizontalPass
 #pragma kernel Highlight
 
 shared Texture2D<float4> source;
-shared RWTexture2D<float4> horzOutput;
+shared RWTexture2D<float4> horizontalPass;
 RWTexture2D<float4> output;
+int2 textureResolution;
 float radius;
-float edgeWidth;
+float edge;
 float shade;
 float4 center;
 int blurRadius;
 
-float inCircle( float2 pt, float2 center, float radius, float edgeWidth ){
-    float len = length(pt - center);
-    return 1.0 - smoothstep(radius-edgeWidth, radius, len);
+float circle(const float2 pos, const float2 center, const float radius, const float edge)
+{
+    const float len = length(pos - center);
+    return 1 - smoothstep(radius - edge, radius, len);
 }
 
 [numthreads(8, 8, 1)]
-void HorzPass(uint3 id : SV_DispatchThreadID)
+void HorizontalPass(uint3 id : SV_DispatchThreadID)
 {
-    
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
+
+    const int left  = max(0, (int)id.x - blurRadius);
+    const int right = min(size.x, (int)id.x + blurRadius);
+    const int count = right - left;
+
+    float4 colour = 0;
+    [unroll(100)]
+    for(uint2 i = uint2(left, id.y); i.x < right; i.x++)
+    {
+        colour += source[i];
+    }
+
+    horizontalPass[id.xy] = colour / count;
 }
 
 [numthreads(8, 8, 1)]
 void Highlight(uint3 id : SV_DispatchThreadID)
 {
-    float4 color = source[id.xy];
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
 
-    output[id.xy] = color;
+    const int bottom  = max(0, (int)id.y - blurRadius);
+    const int top = min(size.y, (int)id.y + blurRadius);
+    const int count = top - bottom;
 
+    float4 colour = 0;
+    [unroll(100)]
+    for(uint2 i = uint2(id.x, bottom); i.y < top; i.y++)
+    {
+        colour += horizontalPass[i];
+    }
+
+    colour /= count;
+
+    const float inCircle = circle(id.xy, center.xy, radius, edge);
+    output[id.xy] = lerp(colour * shade, source[id.xy], inCircle);
 }

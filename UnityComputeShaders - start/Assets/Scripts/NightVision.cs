@@ -3,7 +3,7 @@
 namespace UnityComputeShaders
 {
     [ExecuteInEditMode]
-    public class NightVision : BaseCompletePP
+    public class NightVision : BasePP
     {
         [Range(0.0f, 100.0f)]
         public float radius = 70;
@@ -19,7 +19,7 @@ namespace UnityComputeShaders
         {
             if(!this.init)
                 Init();
-           
+
             SetProperties();
         }
 

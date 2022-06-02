@@ -5,13 +5,19 @@ namespace UnityComputeShaders
     [ExecuteInEditMode]
     public class RingHighlight : BasePP
     {
-        [Range(0.0f, 100.0f)]
-        public float radius = 10;
-        [Range(0.0f, 100.0f)]
-        public float softenEdge;
-        [Range(0.0f, 1.0f)]
-        public float shade;
-        public Transform trackedObject;
+        private static readonly int RadiusID = Shader.PropertyToID("radius");
+        private static readonly int EdgeID   = Shader.PropertyToID("edge");
+        private static readonly int ShadeID  = Shader.PropertyToID("shade");
+        private static readonly int CenterID = Shader.PropertyToID("center");
+
+        [SerializeField, Range(0.01f, 1f)]
+        private float radius = 0.1f;
+        [SerializeField, Range(0f, 1f)]
+        private float smoothing = 0.1f;
+        [SerializeField, Range(0f, 1f)]
+        private float shade = 0.7f;
+        [SerializeField]
+        private Transform trackedObject;
 
         protected override string KernelName => "Highlight";
 
@@ -25,26 +31,26 @@ namespace UnityComputeShaders
             SetProperties();
         }
 
-        protected void SetProperties()
-        {
-            float rad = (this.radius / 100.0f) * this.textureSize.y;
-            this.shader.SetFloat("radius", rad);
-            this.shader.SetFloat("edgeWidth", rad * this.softenEdge / 100.0f);
-            this.shader.SetFloat("shade", this.shade);
-        }
-
         protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
-            if (!this.init || this.shader == null)
+            if (this.trackedObject)
             {
-                Graphics.Blit(source, destination);
+                Vector2 position = this.Camera.WorldToScreenPoint(this.trackedObject.position);
+                this.shader.SetVector(CenterID, position);
             }
-            else
-            {
-                CheckResolution(out _);
-                DispatchWithSource(ref source, ref destination);
-            }
+
+            base.OnRenderImage(source, destination);
         }
 
+        protected override void OnResolutionChanged() => SetProperties();
+
+        protected void SetProperties()
+        {
+            // ReSharper disable once LocalVariableHidesMember
+            float radius = this.radius * this.textureSize.y;
+            this.shader.SetFloat(RadiusID, radius);
+            this.shader.SetFloat(EdgeID, radius * this.smoothing);
+            this.shader.SetFloat(ShadeID, this.shade);
+        }
     }
 }
