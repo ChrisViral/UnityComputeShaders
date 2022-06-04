@@ -1,62 +1,71 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
-#pragma kernel HorzPass
+#pragma kernel HorizontalPass
 #pragma kernel Highlight
 
 shared Texture2D<float4> source;
-shared RWTexture2D<float4> horzOutput;
+shared RWTexture2D<float4> horizontalPass;
 RWTexture2D<float4> output;
+int2 textureResolution;
 float radius;
-float edgeWidth;
+float edge;
 float shade;
 float4 center;
 int blurRadius;
 shared StructuredBuffer<float> weights;
 
-float inCircle( float2 pt, float2 center, float radius, float edgeWidth ){
-    float len = length(pt - center);
-    return 1.0 - smoothstep(radius-edgeWidth, radius, len);
+float circle(const float2 pos, const float2 center, const float radius, const float edge)
+{
+    const float len = length(pos - center);
+    return 1 - smoothstep(radius - edge, radius, len);
 }
 
 [numthreads(8, 8, 1)]
-void HorzPass(uint3 id : SV_DispatchThreadID)
+void HorizontalPass(uint3 id : SV_DispatchThreadID)
 {
-    int left = max(0, (int)id.x-blurRadius);
-    int count = min(blurRadius, (int)id.x) + min(blurRadius, source.Length.x - (int)id.x);
-    float4 color = 0;
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
 
-    uint2 index = uint2((uint)left, id.y);
+    const uint left  = max(0, (int)id.x - blurRadius);
+    const uint right = min(size.x - 1, (int)id.x + blurRadius);
+    const uint count = right - left + 1;
 
-    [unroll(100)]
-    for(int x=0; x<count; x++){
-        color += source[index] * weights[x];
-        index.x++;
+    uint2 i = uint2(left, id.y);
+    float4 colour = 0;
+    float weightSum = 0;
+    [unroll(101)]
+    for(int x = 0; x < count; x++, i.x++)
+    {
+        const float weight = weights[x];
+        colour += source[i] * weight;
+        weightSum += weight;
     }
 
-    horzOutput[id.xy] = color;
-
+    horizontalPass[id.xy] = colour / weightSum;
 }
 
 [numthreads(8, 8, 1)]
 void Highlight(uint3 id : SV_DispatchThreadID)
 {
-    //Vert blur
-    int top = max(0, (int)id.y-blurRadius);
-    int count = min(blurRadius, (int)id.y) + min(blurRadius, source.Length.y - (int)id.y);
-    float4 blurColor = 0;
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
 
-    uint2 index = uint2(id.x, (uint)top);
+    const uint bottom = max(0, (int)id.y - blurRadius);
+    const uint top    = min(size.y - 1, (int)id.y + blurRadius);
+    const uint count  = top - bottom + 1;
 
-    [unroll(100)]
-    for(int y=0; y<count; y++){
-        blurColor += horzOutput[index] * weights[y];
-        index.y++;
+    uint2 i = uint2(id.x, bottom);
+    float4 colour = 0;
+    float weightSum = 0;
+    [unroll(101)]
+    for(int y = 0; y < count; y++, i.y++)
+    {
+        const float weight = weights[y];
+        colour += horizontalPass[i] * weight;
+        weightSum += weight;
     }
 
-    float4 srcColor = source[id.xy];
-    float4 shadedBlurColor = blurColor * shade;
-    float highlight = inCircle( (float2)id.xy, center.xy, radius, edgeWidth);
-    float4 color = lerp( shadedBlurColor, srcColor, highlight );
+    colour /= weightSum;
 
-    output[id.xy] = color;
-
+    const float inCircle = circle(id.xy, center.xy, radius, edge);
+    output[id.xy] = lerp(colour * shade, source[id.xy], inCircle);
 }

@@ -24,13 +24,14 @@ void HorizontalPass(uint3 id : SV_DispatchThreadID)
     uint2 size;
     source.GetDimensions(size.x, size.y);
 
-    const int left  = max(0, (int)id.x - blurRadius);
-    const int right = min(size.x, (int)id.x + blurRadius);
-    const int count = right - left;
+    const uint left  = max(0, (int)id.x - blurRadius);
+    const uint right = min(size.x - 1, (int)id.x + blurRadius);
+    const uint count = right - left + 1;
 
+    uint2 i = uint2(left, id.y);
     float4 colour = 0;
-    [unroll(100)]
-    for(uint2 i = uint2(left, id.y); i.x < right; i.x++)
+    [unroll(101)]
+    for(int x = 0; x < count; x++, i.x++)
     {
         colour += source[i];
     }
@@ -44,13 +45,14 @@ void Highlight(uint3 id : SV_DispatchThreadID)
     uint2 size;
     source.GetDimensions(size.x, size.y);
 
-    const int bottom  = max(0, (int)id.y - blurRadius);
-    const int top = min(size.y, (int)id.y + blurRadius);
-    const int count = top - bottom;
+    const uint bottom = max(0, (int)id.y - blurRadius);
+    const uint top    = min(size.y - 1, (int)id.y + blurRadius);
+    const uint count  = top - bottom + 1;
 
+    uint2 i = uint2(id.x, bottom);
     float4 colour = 0;
-    [unroll(100)]
-    for(uint2 i = uint2(id.x, bottom); i.y < top; i.y++)
+    [unroll(101)]
+    for(int y = 0; y < count; y++, i.y++)
     {
         colour += horizontalPass[i];
     }

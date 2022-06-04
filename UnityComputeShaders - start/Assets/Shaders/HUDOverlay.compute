@@ -1,78 +1,102 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
 #pragma kernel CSMain
 
+#define HALF_PI 1.57079632679
 #define PI 3.14159265359
-#define PI2 6.28318530718
+#define TWO_PI 6.28318530718
 
 Texture2D<float4> source;
 RWTexture2D<float4> output;
+float lineWidth;
+float4 axisColour;
+float4 sweepColour;
 float time;
-float4 axisColor;
-float4 sweepColor;
 
-float getDelta(float x){
-    return (sin(x)+1.0)/2.0;
+float onLine(const float x, const float y, const float width, const float smoothness)
+{
+    const float halfWidth = width / 2;
+    const float edge      = halfWidth * smoothness;
+    return smoothstep(x - halfWidth - edge, x - halfWidth,        y)
+         - smoothstep(x + halfWidth,        x + halfWidth + edge, y);
 }
 
-float sweep(float2 pt, float2 center, float radius, float line_width, float edge_thickness){
-    float2 d = pt - center;
-    float theta = time;
-    float2 p = float2(cos(theta), -sin(theta))*radius;
-    float h = clamp( dot(d,p)/dot(p,p), 0.0, 1.0 );
-    //h = dot(d,p)/dot(p,p);
-    float l = length(d - p*h);
-
-    return 1.0 - smoothstep(line_width, line_width+edge_thickness, l);
-}
-
-float circle(float2 pt, float2 center, float radius, float line_width, float edge_thickness){
-    pt -= center;
-    float len = length(pt);
+float circle(float2 pos, const float2 center, const float radius, const float width, const float smoothness)
+{
+    pos -= center;
+    const float len       = length(pos);
+    const float halfWidth = width / 2;
+    const float edge      = halfWidth * smoothness;
     //Change true to false to soften the edge
-    float result = smoothstep(radius-line_width/2.0-edge_thickness, radius-line_width/2.0, len) - smoothstep(radius + line_width/2.0, radius + line_width/2.0 + edge_thickness, len);
-
-    return result;
+    return smoothstep(radius - halfWidth - edge, radius - halfWidth,        len)
+         - smoothstep(radius + halfWidth,        radius + halfWidth + edge, len);
 }
 
-float onLine(float x, float y, float line_width, float edge_width){
-    return smoothstep(x-line_width/2.0-edge_width, x-line_width/2.0, y) - smoothstep(x+line_width/2.0, x+line_width/2.0+edge_width, y);
+float sweep(float2 pos, const float2 center, const float radius, const float theta, const float width, const float smoothness)
+{
+    pos -= center;
+    const float2 circular = float2(cos(theta), -sin(theta)) * radius;
+    const float depth     = clamp(dot(pos, circular) / dot(circular, circular), 0, 1);
+    const float len       = length(pos - (circular * depth));
+    const float edge      = width * smoothness;
+
+    const float angle = fmod(theta + atan2(pos.y, pos.x), TWO_PI);
+    float gradient    = clamp(HALF_PI - angle, 0, HALF_PI) / PI;
+    gradient          = step(length(pos), radius) * gradient;
+
+    return gradient + 1 - smoothstep(width, width + edge, len);
 }
 
-float polygon(float2 pt, float2 center, float radius, int sides, float rotate, float edge_thickness){
-    pt -= center;
+float polygon(float2 pos, const float2 center, const float radius, const int sides, const float rotate, const float smoothness)
+{
+    pos -= center;
 
-    // Angle and radius from the current pixel 
-    float theta = atan2(pt.y, pt.x) + rotate;
-    float rad = PI2/float(sides);
+    //Angle and radius from the current pixel /
+    const float theta = atan2(pos.y, pos.x) + rotate;
+    const float rad   = TWO_PI / float(sides);
+    const float edge  = radius * smoothness;
 
-    // Shaping function that modulate the distance    
-    float d = cos(floor(0.5 + theta/rad)*rad-theta)*length(pt);
+    // Shaping function that modulate the distance
+    const float d = cos((floor(0.5 + (theta / rad)) * rad) - theta) * length(pos);
 
-    return 1.0 - smoothstep(radius, radius + edge_thickness, d);
+    return 1 - smoothstep(radius, radius + edge, d);
 }
+
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    float3 white = 1;
-    
-    float2 uv = (float2)id.xy;
-    float2 center = 0.5;
-    float aspectRatio = (float)source.Length.x/(float)source.Length.y;
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
 
-    if (aspectRatio>1){
-        uv /= (float)source.Length.y;
-        center.x *= aspectRatio; 
-    }else{
-        uv /= (float)source.Length.x;
+    float2 center = 0.5;
+    float2 uv = id.xy;
+    const float aspectRatio = size.x / (float)size.y;
+    if (aspectRatio > 1)
+    {
+        uv /= size.y;
+        center.x *= aspectRatio;
+    }
+    else
+    {
+        uv /= size.x;
         center.y /= aspectRatio;
     }
 
-    float3 color = onLine(uv.y, center.y, 0.002, 0.001) * axisColor.rgb;//xAxis
-    //TO DO: Add code here
+    float onAxis = onLine(uv.y, center.y, lineWidth, 0.1);
+    onAxis      += onLine(center.x, uv.x, lineWidth, 0.1);
+    onAxis      += circle(uv, center, 0.15, lineWidth, 0.1);
+    onAxis      += circle(uv, center, 0.3,  lineWidth, 0.1);
+    onAxis      += circle(uv, center, 0.45, lineWidth, 0.1);
 
-    float alpha = saturate(color.r + color.g + color.b);
-    float3 finalColor = lerp(source[id.xy].rgb, color, alpha);
+    const float offset = (sin(time * 3) * 0.05) + 0.55;
+    onAxis      += polygon(uv, float2(center.x + offset, center.y), 0.015, 3, 0,  0.1);
+    onAxis      += polygon(uv, float2(center.x - offset, center.y), 0.015, 3, PI, 0.1);
+    onAxis       = saturate(onAxis);
 
-    output[id.xy] = float4(finalColor, 1.0);
+    const float onSweep = sweep(uv, center, 0.45, time + TWO_PI, lineWidth * 2, 0.01);
+
+    float3 colour = lerp(source[id.xy].rgb, axisColour.rgb, onAxis);
+    colour = lerp(colour, sweepColour.rgb, onSweep);
+
+    output[id.xy] = float4(colour, 1);
 }

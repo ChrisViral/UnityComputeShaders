@@ -5,28 +5,33 @@ namespace UnityComputeShaders
     [ExecuteInEditMode]
     public class HUDOverlay : BasePP
     {
-        public Color axisColor = new(0.8f, 0.8f, 0.8f, 1);
-        public Color sweepColor = new(0.1f, 0.3f, 0.1f, 1);
+        private static readonly int LineWidthID   = Shader.PropertyToID("lineWidth");
+        private static readonly int AxisColourID  = Shader.PropertyToID("axisColour");
+        private static readonly int SweepColourID = Shader.PropertyToID("sweepColour");
+        private static readonly int TimeID        = Shader.PropertyToID("time");
 
-        private void OnValidate()
+        [SerializeField, Range(0.001f, 0.01f)]
+        private float lineWidth   = 0.002f;
+        [SerializeField]
+        private Color axisColour  = Color.white;
+        [SerializeField]
+        private Color sweepColour = Color.blue;
+
+        protected override void SetProperties()
         {
-            if (!this.init)
-                Init();
-
-            SetProperties();
-        }
-
-        protected void SetProperties()
-        {
-            this.shader.SetVector("axisColor", this.axisColor);
-            this.shader.SetVector("sweepColor", this.sweepColor);
+            this.shader.SetFloat(LineWidthID, this.lineWidth);
+            this.shader.SetVector(AxisColourID, this.axisColour);
+            this.shader.SetVector(SweepColourID, this.sweepColour);
         }
 
         protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
-            if (this.shader) this.shader.SetFloat("time", Time.time);
+            if (this.shader)
+            {
+                this.shader.SetFloat(TimeID, Time.time);
+            }
+
             base.OnRenderImage(source, destination);
         }
-
     }
 }

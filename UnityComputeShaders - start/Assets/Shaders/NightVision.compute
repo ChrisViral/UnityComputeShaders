@@ -4,28 +4,50 @@
 Texture2D<float4> source;
 RWTexture2D<float4> output;
 float radius;
-float edgeWidth;
-int lines;
-float4 tintColor;
+float edge;
+float4 tintColour;
 float tintStrength;
+int lines;
+float lineStrength;
+float lineSpeed;
+float noiseFactor;
 float time;
 
-float random (float2 pt, float seed) {
-    const float a = 12.9898;
-    const float b = 78.233;
-    const float c = 43758.543123;
-    return frac(sin(dot(pt, float2(a, b)) + seed) * c );
+float random (const float2 pt, const float seed)
+{
+    return frac(sin(dot(pt, float2(12.9898, 78.233)) + seed) * 43758.543123);
 }
 
-float inCircle( float2 pt, float2 center, float radius, float edgeWidth ){
-    float len = length(pt - center);
-    return 1.0 - smoothstep(radius-edgeWidth, radius, len);
+float circle(const float2 pos, const float2 center, const float radius, const float edge)
+{
+    const float len = length(pos - center);
+    return 1 - smoothstep(radius - edge, radius, len);
 }
 
 [numthreads(8, 8, 1)]
 void CSMain(uint3 id : SV_DispatchThreadID)
 {
-    float3 finalColor = source[id.xy].rgb;
-           
-    output[id.xy] = float4(finalColor, 1);
+    const uint2 rounded = (id.xy / 3) * 3;
+    const float noise = random(id.xy, time);
+    float3 colour     = lerp(saturate(source[id.xy].rgb * noiseFactor), source[rounded].rgb, noise);
+
+    const float grayscale = (colour.r + colour.g + colour.b) / 3;
+    const float3 tinted   = tintColour.rgb * grayscale;
+    colour                = lerp(colour, tinted, tintStrength);
+
+    uint2 size;
+    source.GetDimensions(size.x, size.y);
+    float2 center = size / float2(3, 2);
+
+    float2 uv = id / (float2)size;
+    float onLine = frac((uv.y * lines) + (time * lineSpeed));
+    onLine = saturate(smoothstep(0.1, 0.2, onLine) + 0.5);
+    colour = lerp(colour * (1 - lineStrength), colour, onLine);
+
+    const float leftEye  = circle(id.xy, center, radius, edge);
+    center.x *= 2;
+    const float rightEye = circle(id.xy, center, radius, edge);
+    const float inEyes   = saturate(leftEye + rightEye);
+
+    output[id.xy] = float4(colour * inEyes, 1);
 }

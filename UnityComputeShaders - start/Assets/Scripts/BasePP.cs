@@ -36,8 +36,6 @@ namespace UnityComputeShaders
 
         protected virtual string KernelName => "CSMain";
 
-        protected virtual void OnDestroy() => ClearTextures();
-
         protected virtual void OnEnable()
         {
             if (!SystemInfo.supportsComputeShaders)
@@ -56,6 +54,18 @@ namespace UnityComputeShaders
         }
 
         protected virtual void OnDisable() => ClearTextures();
+
+        protected virtual void OnDestroy() => ClearTextures();
+
+        protected virtual void OnValidate()
+        {
+            if (!this.init)
+            {
+                Init();
+            }
+
+            SetProperties();
+        }
 
         protected virtual void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
@@ -137,6 +147,8 @@ namespace UnityComputeShaders
             return true;
         }
 
-        protected virtual void OnResolutionChanged() { }
+        protected virtual void OnResolutionChanged() => SetProperties();
+
+        protected virtual void SetProperties() { }
     }
 }

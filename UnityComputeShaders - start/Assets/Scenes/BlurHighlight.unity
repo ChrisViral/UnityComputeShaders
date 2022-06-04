@@ -524,7 +524,7 @@ MonoBehaviour:
   shader: {fileID: 7200000, guid: 1ce322ccd86544eb6828c7ea2851b8ae, type: 3}
   radius: 0.1
   smoothing: 0.3
-  shade: 0.5
+  shade: 0.7
   trackedObject: {fileID: 190369478}
   blurRadius: 20
 --- !u!1 &1775990536

@@ -17,7 +17,7 @@ namespace UnityComputeShaders
         [SerializeField, Range(0.01f, 1f)]
         private float radius = 0.1f;
         [SerializeField, Range(0f, 1f)]
-        private float smoothing = 0.1f;
+        private float smoothing = 0.3f;
         [SerializeField, Range(0f, 1f)]
         private float shade = 0.7f;
         [SerializeField]
@@ -29,16 +29,6 @@ namespace UnityComputeShaders
         private int horizontalHandle;
 
         protected override string KernelName => "Highlight";
-
-        private void OnValidate()
-        {
-            if (!this.init)
-            {
-                Init();
-            }
-
-            SetProperties();
-        }
 
         protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
@@ -83,9 +73,7 @@ namespace UnityComputeShaders
             Graphics.Blit(this.output, destination);
         }
 
-        protected override void OnResolutionChanged() => SetProperties();
-
-        protected void SetProperties()
+        protected override void SetProperties()
         {
             // ReSharper disable once LocalVariableHidesMember
             float radius = this.radius * this.textureSize.y;

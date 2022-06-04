@@ -21,16 +21,6 @@ namespace UnityComputeShaders
 
         protected override string KernelName => "Highlight";
 
-        private void OnValidate()
-        {
-            if (!this.init)
-            {
-                Init();
-            }
-
-            SetProperties();
-        }
-
         protected override void OnRenderImage(RenderTexture source, RenderTexture destination)
         {
             if (this.trackedObject)
@@ -42,9 +32,7 @@ namespace UnityComputeShaders
             base.OnRenderImage(source, destination);
         }
 
-        protected override void OnResolutionChanged() => SetProperties();
-
-        protected void SetProperties()
+        protected override void SetProperties()
         {
             // ReSharper disable once LocalVariableHidesMember
             float radius = this.radius * this.textureSize.y;
