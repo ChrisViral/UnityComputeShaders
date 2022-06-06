@@ -65,6 +65,22 @@ namespace UnityComputeShaders
             InitShader();
         }
 
+        private void OnDestroy()
+        {
+            this.boidsBuffer?.Dispose();
+            this.argsBuffer?.Dispose();
+        }
+
+        private void Update()
+        {
+            this.shader.SetFloat(TimeID, Time.time);
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
+
+            this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
+
+            Graphics.DrawMeshInstancedIndirect(this.boidMesh, 0, this.boidMaterial, this.bounds, this.argsBuffer);
+        }
+
         private void InitBoids()
         {
             this.boids = new Boid[this.boidsCount];
@@ -103,22 +119,6 @@ namespace UnityComputeShaders
             this.args[0] = this.boidMesh.GetIndexCount(0);
             this.args[1] = (uint)this.boidsCount;
             this.argsBuffer.SetData(this.args);
-        }
-
-        private void Update()
-        {
-            this.shader.SetFloat(TimeID, Time.time);
-            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
-
-            this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
-
-            Graphics.DrawMeshInstancedIndirect(this.boidMesh, 0, this.boidMaterial, this.bounds, this.argsBuffer);
-        }
-
-        private void OnDestroy()
-        {
-            this.boidsBuffer?.Dispose();
-            this.argsBuffer?.Dispose();
         }
     }
 }
