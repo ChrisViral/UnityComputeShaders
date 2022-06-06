@@ -8,100 +8,103 @@ namespace UnityComputeShaders
         {
             public Vector3 position;
             public Vector3 direction;
-        
-            public Boid(Vector3 pos)
-            {
-                this.position.x = pos.x;
-                this.position.y = pos.y;
-                this.position.z = pos.z;
-                this.direction.x = 0;
-                this.direction.y = 0;
-                this.direction.z = 0;
-            }
         }
 
-        public ComputeShader shader;
+        private const string KERNEL   = "CSMain";
+        private const int BOID_STRIDE = 6 * sizeof(float);
 
-        public float rotationSpeed = 1f;
-        public float boidSpeed = 1f;
-        public float neighbourDistance = 1f;
-        public float boidSpeedVariation = 1f;
-        public GameObject boidPrefab;
-        public int boidsCount;
-        public float spawnRadius;
-        public Transform target;
+        private static readonly int BoidsBufferID       = Shader.PropertyToID("boidsBuffer");
+        private static readonly int BoidSpeedID         = Shader.PropertyToID("boidSpeed");
+        private static readonly int FlockPositionID     = Shader.PropertyToID("flockPosition");
+        private static readonly int NeighbourDistanceID = Shader.PropertyToID("neighbourDistance");
+        private static readonly int BoidsCountID        = Shader.PropertyToID("boidsCount");
+        private static readonly int DeltaTimeID         = Shader.PropertyToID("deltaTime");
+
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, Range(0.5f, 10f)]
+        private float boidSpeed = 1f;
+        [SerializeField, Range(0.5f, 10f)]
+        private float neighbourDistance = 1f;
+        [SerializeField]
+        private GameObject boidPrefab;
+        [SerializeField]
+        private int boidsCount;
+        [SerializeField, Range(0.5f, 10f)]
+        private float spawnRadius;
 
         private int kernelHandle;
         private ComputeBuffer boidsBuffer;
-        private Boid[] boidsArray;
-        private GameObject[] boids;
+        private Boid[] boids;
+        private Transform[] boidTransforms;
         private int groupSizeX;
-        private int numOfBoids;
 
         private void Start()
         {
-            this.kernelHandle = this.shader.FindKernel("CSMain");
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
 
             this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out _, out _);
             this.groupSizeX = Mathf.CeilToInt(this.boidsCount / (float)x);
-            this.numOfBoids = this.groupSizeX * (int)x;
+            this.boidsCount = this.groupSizeX * (int)x;
 
             InitBoids();
             InitShader();
         }
 
+        private void OnDestroy()
+        {
+            this.boidsBuffer?.Dispose();
+        }
+
         private void InitBoids()
         {
-            this.boids = new GameObject[this.numOfBoids];
-            this.boidsArray = new Boid[this.numOfBoids];
+            this.boids          = new Boid[this.boidsCount];
+            this.boidTransforms = new Transform[this.boidsCount];
 
-            for (int i = 0; i < this.numOfBoids; i++)
+            for (int i = 0; i < this.boidsCount; i++)
             {
-                Vector3 pos = this.transform.position + Random.insideUnitSphere * this.spawnRadius;
-                this.boidsArray[i] = new(pos);
-                this.boids[i] = Instantiate(this.boidPrefab, pos, Quaternion.identity);
-                this.boidsArray[i].direction = this.boids[i].transform.forward;
+                Random.InitState(new System.Random().Next());
+                Vector3 position            = Random.insideUnitSphere * this.spawnRadius;
+                Boid boid                   = new() { position = position };
+                Transform boidTransform     = Instantiate(this.boidPrefab, Vector3.zero, Quaternion.identity, this.transform).transform;
+                boidTransform.localPosition = position;
+                boid.direction              = boidTransform.forward;
+                this.boids[i]               = boid;
+                this.boidTransforms[i]      = boidTransform;
             }
         }
 
         private void InitShader()
         {
-            this.boidsBuffer = new(this.numOfBoids, 6 * sizeof(float));
-            this.boidsBuffer.SetData(this.boidsArray);
+            this.boidsBuffer = new(this.boidsCount, BOID_STRIDE);
+            this.boidsBuffer.SetData(this.boids);
 
-            this.shader.SetBuffer(this.kernelHandle, "boidsBuffer", this.boidsBuffer);
-            this.shader.SetFloat("rotationSpeed", this.rotationSpeed);
-            this.shader.SetFloat("boidSpeed", this.boidSpeed);
-            this.shader.SetFloat("boidSpeedVariation", this.boidSpeedVariation);
-            this.shader.SetVector("flockPosition", this.target.transform.position);
-            this.shader.SetFloat("neighbourDistance", this.neighbourDistance);
-            this.shader.SetInt("boidsCount", this.boidsCount);
+            this.shader.SetBuffer(this.kernelHandle, BoidsBufferID, this.boidsBuffer);
+            this.shader.SetFloat(BoidSpeedID, this.boidSpeed);
+            this.shader.SetVector(FlockPositionID, this.transform.position);
+            this.shader.SetFloat(NeighbourDistanceID, this.neighbourDistance);
+            this.shader.SetInt(BoidsCountID, this.boidsCount);
         }
 
         private void Update()
         {
-            this.shader.SetFloat("time", Time.time);
-            this.shader.SetFloat("deltaTime", Time.deltaTime);
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
 
             this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
 
-            this.boidsBuffer.GetData(this.boidsArray);
+            this.boidsBuffer.GetData(this.boids);
 
-            for (int i = 0; i < this.boidsArray.Length; i++)
+            for (int i = 0; i < this.boidsCount; i++)
             {
-                this.boids[i].transform.localPosition = this.boidsArray[i].position;
+                Boid boid                   = this.boids[i];
+                Transform boidTransform     = this.boidTransforms[i];
+                boidTransform.localPosition = boid.position;
 
-                if (!this.boidsArray[i].direction.Equals(Vector3.zero))
+                if (boid.direction != Vector3.zero)
                 {
-                    this.boids[i].transform.rotation = Quaternion.LookRotation(this.boidsArray[i].direction);
+                    boidTransform.rotation = Quaternion.LookRotation(boid.direction);
                 }
-
             }
-        }
-
-        private void OnDestroy()
-        {
-            this.boidsBuffer?.Dispose();
         }
     }
 }

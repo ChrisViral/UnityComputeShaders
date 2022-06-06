@@ -1,73 +1,88 @@
-﻿Shader "Flocking/Instanced" { 
+﻿Shader "Flocking/Instanced"
+{
 
-   Properties {
-		_Color ("Color", Color) = (1,1,1,1)
-		_MainTex ("Albedo (RGB)", 2D) = "white" {}
-		_BumpMap ("Bumpmap", 2D) = "bump" {}
-		_MetallicGlossMap("Metallic", 2D) = "white" {}
-		_Metallic ("Metallic", Range(0,1)) = 0.0
-		_Glossiness ("Smoothness", Range(0,1)) = 1.0
-	}
+   Properties
+   {
+        _Colour("Colour", Color)               = (1, 1, 1, 1)
+        _MainTex("Albedo (RGB)", 2D)           = "white" { }
+        _NormalMap("Normal Map", 2D)           = "bump"  { }
+        _MetallicGlossMap("Metallic", 2D)      = "white" { }
+        _Metallic("Metallic", Range(0, 1))     = 0
+        _Glossiness("Smoothness", Range(0, 1)) = 1
+    }
 
-   SubShader {
- 
-		CGPROGRAM
+   SubShader
+   {
+        CGPROGRAM
 
-		sampler2D _MainTex;
-		sampler2D _BumpMap;
-		sampler2D _MetallicGlossMap;
-		struct Input {
-			float2 uv_MainTex;
-			float2 uv_BumpMap;
-			float3 worldPos;
-		};
-		half _Glossiness;
-		half _Metallic;
-		fixed4 _Color;
- 
         #pragma surface surf Standard vertex:vert addshadow nolightmap
         #pragma instancing_options procedural:setup
 
-        float4x4 _Matrix;
+        #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+        struct Boid
+        {
+            float3 position;
+            float3 direction;
+            float noise;
+        };
+
+        StructuredBuffer<Boid> boidsBuffer;
+         #endif
+
+        struct Input
+        {
+            float2 uv_MainTex;
+            float2 uv_NormalMap;
+            float3 worldPos;
+        };
+
+        half _Glossiness;
+        half _Metallic;
+        fixed4 _Colour;
+        sampler2D _MainTex;
+        sampler2D _NormalMap;
+        sampler2D _MetallicGlossMap;
+        float4x4 _MovementMatrix;
         float3 _BoidPosition;
 
-         #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-            struct Boid
-            {
-                float3 position;
-                float3 direction;
-                float noise_offset;
-            };
-
-            StructuredBuffer<Boid> boidsBuffer; 
-         #endif
-     
-         void vert(inout appdata_full v, out Input data)
+        float4x4 getMovementMatrix(float3 position, float3 direction)
         {
-            UNITY_INITIALIZE_OUTPUT(Input, data);
-
-            #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-                v.vertex.xyz += _BoidPosition;
-            #endif
+            float3 zAxis = normalize(direction);
+            float3 xAxis = normalize(cross(float3(0, 1, 0), zAxis));
+            float3 yAxis = normalize(cross(zAxis, xAxis));
+            return float4x4(xAxis.x, yAxis.x, zAxis.x, position.x,
+                            xAxis.y, yAxis.y, zAxis.y, position.y,
+                            xAxis.z, yAxis.z, zAxis.z, position.z,
+                            0,       0,       0,       1);
         }
 
         void setup()
         {
             #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-                _BoidPosition = boidsBuffer[unity_InstanceID].position;
+            Boid boid       = boidsBuffer[unity_InstanceID];
+            _MovementMatrix = getMovementMatrix(boid.position, boid.direction);
             #endif
         }
- 
-         void surf (Input IN, inout SurfaceOutputStandard o) {
-            fixed4 c = tex2D (_MainTex, IN.uv_MainTex) * _Color;
-			fixed4 m = tex2D (_MetallicGlossMap, IN.uv_MainTex); 
-			o.Albedo = c.rgb;
-			o.Alpha = c.a;
-			o.Normal = UnpackNormal (tex2D (_BumpMap, IN.uv_BumpMap));
-			o.Metallic = m.r;
-			o.Smoothness = _Glossiness * m.a;
+
+        void vert(inout appdata_full v, out Input OUT)
+        {
+            UNITY_INITIALIZE_OUTPUT(Input, OUT);
+
+            #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
+            v.vertex = mul(_MovementMatrix, v.vertex);
+            #endif
+        }
+
+         void surf(Input IN, inout SurfaceOutputStandard OUT)
+         {
+            fixed4 colour   = tex2D(_MainTex, IN.uv_MainTex) * _Colour;
+            fixed4 metallic = tex2D(_MetallicGlossMap, IN.uv_MainTex);
+            OUT.Albedo      = colour.rgb;
+            OUT.Alpha       = colour.a;
+            OUT.Normal      = UnpackNormal(tex2D(_NormalMap, IN.uv_NormalMap));
+            OUT.Metallic    = metallic.r;
+            OUT.Smoothness  = _Glossiness * metallic.a;
          }
- 
          ENDCG
    }
 }

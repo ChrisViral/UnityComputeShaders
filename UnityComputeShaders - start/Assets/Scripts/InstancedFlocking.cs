@@ -8,52 +8,58 @@ namespace UnityComputeShaders
         {
             public Vector3 position;
             public Vector3 direction;
-            public float noise_offset;
-
-            public Boid(Vector3 pos, Vector3 dir, float offset)
-            {
-                this.position.x = pos.x;
-                this.position.y = pos.y;
-                this.position.z = pos.z;
-                this.direction.x = dir.x;
-                this.direction.y = dir.y;
-                this.direction.z = dir.z;
-                this.noise_offset = offset;
-            }
+            public float noise;
         }
 
-        private const int SIZE_BOID = 7 * sizeof(float);
-    
-        public ComputeShader shader;
+        private const string KERNEL   = "CSMain";
+        private const int BOID_STRIDE = 7 * sizeof(float);
+        private const int ARGS_STRIDE = 5 * sizeof(uint);
 
-        public float rotationSpeed = 1f;
-        public float boidSpeed = 1f;
-        public float neighbourDistance = 1f;
-        public float boidSpeedVariation = 1f;
-        public Mesh boidMesh;
-        public Material boidMaterial;
-        public int boidsCount;
-        public float spawnRadius;
-        public Transform target;
+        private static readonly int BoidsBufferID        = Shader.PropertyToID("boidsBuffer");
+        private static readonly int RotationSpeedID      = Shader.PropertyToID("rotationSpeed");
+        private static readonly int BoidSpeedID          = Shader.PropertyToID("boidSpeed");
+        private static readonly int BoidSpeedVariationID = Shader.PropertyToID("boidSpeedVariation");
+        private static readonly int FlockPositionID      = Shader.PropertyToID("flockPosition");
+        private static readonly int NeighbourDistanceID  = Shader.PropertyToID("neighbourDistance");
+        private static readonly int BoidsCountID         = Shader.PropertyToID("boidsCount");
+        private static readonly int TimeID               = Shader.PropertyToID("time");
+        private static readonly int DeltaTimeID          = Shader.PropertyToID("deltaTime");
+
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, Range(0.5f, 10f)]
+        private float rotationSpeed = 1f;
+        [SerializeField, Range(0.5f, 10f)]
+        private float boidSpeed = 1f;
+        [SerializeField, Range(0.5f, 10f)]
+        private float neighbourDistance = 1f;
+        [SerializeField, Range(0.5f, 10f)]
+        private float boidSpeedVariation = 1f;
+        [SerializeField]
+        private Mesh boidMesh;
+        [SerializeField]
+        private Material boidMaterial;
+        [SerializeField]
+        private int boidsCount;
+        [SerializeField, Range(0.5f, 10f)]
+        private float spawnRadius;
 
         private int kernelHandle;
         private ComputeBuffer boidsBuffer;
         private ComputeBuffer argsBuffer;
-        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
-        private Boid[] boidsArray;
+        private readonly uint[] args = new uint[5];
+        private Boid[] boids;
         private int groupSizeX;
-        private int numOfBoids;
         private Bounds bounds;
 
         private void Start()
         {
-            this.kernelHandle = this.shader.FindKernel("CSMain");
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
 
             this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out _, out _);
             this.groupSizeX = Mathf.CeilToInt(this.boidsCount / (float)x);
-            this.numOfBoids = this.groupSizeX * (int)x;
-
-            this.bounds = new(Vector3.zero, Vector3.one * 1000);
+            this.boidsCount = this.groupSizeX * (int)x;
+            this.bounds = new(Vector3.zero, new(1000f, 1000f, 1000f));
 
             InitBoids();
             InitShader();
@@ -61,40 +67,48 @@ namespace UnityComputeShaders
 
         private void InitBoids()
         {
-            this.boidsArray = new Boid[this.numOfBoids];
-
-            for (int i = 0; i < this.numOfBoids; i++)
+            this.boids = new Boid[this.boidsCount];
+            for (int i = 0; i < this.boidsCount; i++)
             {
-                Vector3 pos = this.transform.position + Random.insideUnitSphere * this.spawnRadius;
-                Quaternion rot = Quaternion.Slerp(this.transform.rotation, Random.rotation, 0.3f);
-                float offset = Random.value * 1000.0f;
-                this.boidsArray[i] = new(pos, rot.eulerAngles, offset);
+                Random.InitState(new System.Random().Next());
+                Transform parent    = this.transform;
+                Vector3 position    = parent.position + (Random.insideUnitSphere * this.spawnRadius);
+                Quaternion rotation = Quaternion.Slerp(parent.rotation, Random.rotation, 0.3f);
+                float offset        = Random.Range(0f, 1000f);
+                this.boids[i]       = new()
+                {
+                    position  = position,
+                    direction = rotation.eulerAngles,
+                    noise     = offset
+                };
             }
         }
 
         private void InitShader()
         {
-            this.boidsBuffer = new(this.numOfBoids, SIZE_BOID);
-            this.boidsBuffer.SetData(this.boidsArray);
+            this.boidsBuffer = new(this.boidsCount, BOID_STRIDE);
+            this.boidsBuffer.SetData(this.boids);
 
-            //Initialize args buffer
+            this.shader.SetBuffer(this.kernelHandle, BoidsBufferID, this.boidsBuffer);
+            this.boidMaterial.SetBuffer(BoidsBufferID, this.boidsBuffer);
 
+            this.shader.SetFloat(RotationSpeedID, this.rotationSpeed);
+            this.shader.SetFloat(BoidSpeedID, this.boidSpeed);
+            this.shader.SetFloat(BoidSpeedVariationID, this.boidSpeedVariation);
+            this.shader.SetVector(FlockPositionID, this.transform.position);
+            this.shader.SetFloat(NeighbourDistanceID, this.neighbourDistance);
+            this.shader.SetInt(BoidsCountID, this.boidsCount);
 
-            this.shader.SetBuffer(this.kernelHandle, "boidsBuffer", this.boidsBuffer);
-            this.shader.SetFloat("rotationSpeed", this.rotationSpeed);
-            this.shader.SetFloat("boidSpeed", this.boidSpeed);
-            this.shader.SetFloat("boidSpeedVariation", this.boidSpeedVariation);
-            this.shader.SetVector("flockPosition", this.target.transform.position);
-            this.shader.SetFloat("neighbourDistance", this.neighbourDistance);
-            this.shader.SetInt("boidsCount", this.numOfBoids);
-
-            this.boidMaterial.SetBuffer("boidsBuffer", this.boidsBuffer);
+            this.argsBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
+            this.args[0] = this.boidMesh.GetIndexCount(0);
+            this.args[1] = (uint)this.boidsCount;
+            this.argsBuffer.SetData(this.args);
         }
 
         private void Update()
         {
-            this.shader.SetFloat("time", Time.time);
-            this.shader.SetFloat("deltaTime", Time.deltaTime);
+            this.shader.SetFloat(TimeID, Time.time);
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
 
             this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
 
@@ -104,7 +118,6 @@ namespace UnityComputeShaders
         private void OnDestroy()
         {
             this.boidsBuffer?.Dispose();
-
             this.argsBuffer?.Dispose();
         }
     }
