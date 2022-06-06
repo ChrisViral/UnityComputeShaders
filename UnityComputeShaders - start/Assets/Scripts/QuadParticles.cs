@@ -1,15 +1,11 @@
 ﻿using UnityEngine;
 
-#pragma warning disable 0649
-
 namespace UnityComputeShaders
 {
     public class QuadParticles : MonoBehaviour
     {
-
-        private Vector2 cursorPos;
-
-        // struct
+        #pragma warning disable 0649
+        // ReSharper disable NotAccessedField.Local
         private struct Particle
         {
             public Vector3 position;
@@ -17,107 +13,122 @@ namespace UnityComputeShaders
             public float life;
         }
 
-        private const int SIZE_PARTICLE = 7 * sizeof(float);
-
-        public int particleCount = 10000;
-        public Material material;
-        public ComputeShader shader;
-        [Range(0.01f, 1.0f)]
-        public float quadSize = 0.1f;
-
-        private int numParticles;
-        private int numVerticesInMesh;
-        private int kernelID;
-        private ComputeBuffer particleBuffer;
-
-        private int groupSizeX; 
-    
-        // Use this for initialization
-        private void Start()
+        private struct Vertex
         {
-            Init();
+            public Vector3 position;
+            public Vector2 uv;
+            public float life;
+        }
+        // ReSharper restore NotAccessedField.Local
+        #pragma warning restore 0649
+
+        private const string KERNEL     = "CSParticle";
+        private const int SIZE_PARTICLE = 7 * sizeof(float);
+        private const int SIZE_VERTEX   = 6 * sizeof(float);
+
+        private static readonly int ParticleBufferID = Shader.PropertyToID("particles");
+        private static readonly int VertexBufferID   = Shader.PropertyToID("vertices");
+        private static readonly int DeltaTimeID      = Shader.PropertyToID("deltaTime");
+        private static readonly int MousePositionID  = Shader.PropertyToID("mousePosition");
+        private static readonly int SizeID           = Shader.PropertyToID("size");
+
+        [SerializeField]
+        private int particleCount = 1000;
+        [SerializeField]
+        private Material material;
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, Range(0.01f, 1f)]
+        private float quadSize = 0.3f;
+
+        private readonly float[] cursorPosition = new float[2];
+        private int kernelID;
+        private ComputeBuffer particlesBuffer;
+        private ComputeBuffer verticesBuffer;
+        private int groupSizeX;
+        private int verticesCount;
+
+        private new Camera camera;
+        private Camera Camera
+        {
+            get
+            {
+                if (!this.camera)
+                {
+                    this.camera = Camera.main;
+                }
+
+                return this.camera;
+            }
         }
 
-        private void Init()
+        private void Start()
         {
-            // find the id of the kernel
-            this.kernelID = this.shader.FindKernel("CSMain");
-
-            this.shader.GetKernelThreadGroupSizes(this.kernelID, out uint threadsX, out _, out _);
-            this.groupSizeX = Mathf.CeilToInt(this.particleCount / (float)threadsX);
-            this.numParticles = this.groupSizeX * (int)threadsX;
-
-            // initialize the particles
-            Particle[] particleArray = new Particle[this.numParticles];
-
-            int numVertices = this.numParticles * 6;
-        
-            Vector3 pos = new();
-        
-            for (int i = 0; i < this.numParticles; i++)
+            // Initialize the particles and vertices
+            Particle[] particles = new Particle[this.particleCount];
+            Vertex[] vertices    = new Vertex[this.particleCount * 6];
+            for (int i = 0, j = 0; i < this.particleCount; i++)
             {
-                pos.Set(Random.value * 2 - 1.0f, Random.value * 2 - 1.0f, Random.value * 2 - 1.0f);
-                pos.Normalize();
-                pos *= Random.value;
-                pos *= 0.5f;
+                ref Particle particle = ref particles[i];
+                particle.position     = Random.insideUnitSphere / 2f;
+                particle.position.z  += 3f;
+                particle.life         = Random.Range(1f, 4f);
 
-                particleArray[i].position.Set(pos.x, pos.y, pos.z + 3);
-                particleArray[i].velocity.Set(0,0,0);
-          
-                // Initial life value
-                particleArray[i].life = Random.value * 5.0f + 1.0f;
+                // Tri 1: bl, tl, tr
+                vertices[j++].uv = Vector2.zero;
+                vertices[j++].uv = Vector2.up;
+                vertices[j++].uv = Vector2.one;
+
+                // Tri 2: bl, tr, br
+                vertices[j++].uv = Vector2.zero;
+                vertices[j++].uv = Vector2.one;
+                vertices[j++].uv   = Vector2.right;
             }
 
-            // create compute buffers
-            this.particleBuffer = new(this.numParticles, SIZE_PARTICLE);
-            this.particleBuffer.SetData(particleArray);
-        
-            // bind the compute buffers to the shader and the compute shader
-            this.shader.SetBuffer(this.kernelID, "particleBuffer", this.particleBuffer);
+            // Create compute buffers
+            this.particlesBuffer = new(this.particleCount, SIZE_PARTICLE);
+            this.particlesBuffer.SetData(particles);
+            this.verticesBuffer  = new(vertices.Length, SIZE_VERTEX);
+            this.verticesBuffer.SetData(vertices);
+
+
+            // Initialize shader
+            this.kernelID = this.shader.FindKernel(KERNEL);
+            this.shader.GetKernelThreadGroupSizes(this.kernelID, out uint threadsX, out _, out _);
+            this.groupSizeX = Mathf.CeilToInt(this.particleCount / (float)threadsX);
+
+            // Bind the compute buffer to the shader and the compute shader
+            this.shader.SetBuffer(this.kernelID, ParticleBufferID, this.particlesBuffer);
+            this.shader.SetBuffer(this.kernelID, VertexBufferID, this.verticesBuffer);
+            this.material.SetBuffer(ParticleBufferID, this.particlesBuffer);
+            this.material.SetBuffer(VertexBufferID, this.verticesBuffer);
+            this.shader.SetFloat(SizeID, this.quadSize);
+        }
+
+        private void OnDestroy()
+        {
+            this.particlesBuffer?.Release();
+            this.verticesBuffer?.Release();
+        }
+
+        private void Update()
+        {
+            // Send data to the compute shader
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
+            this.shader.SetFloats(MousePositionID, this.cursorPosition);
+
+            // Update the Particles
+            this.shader.Dispatch(this.kernelID, this.groupSizeX, 1, 1);
+
+            Vector2 worldPosition = this.Camera.ScreenToWorldPoint(new(Input.mousePosition.x, Input.mousePosition.y, this.Camera.nearClipPlane + 14f)); // z = 3.
+            this.cursorPosition[0] = worldPosition.x;
+            this.cursorPosition[1] = worldPosition.y;
         }
 
         private void OnRenderObject()
         {
             this.material.SetPass(0);
-            Graphics.DrawProceduralNow(MeshTopology.Points, 1, this.numParticles);
-        }
-
-        private void OnDestroy()
-        {
-            this.particleBuffer?.Release();
-        }
-
-        // Update is called once per frame
-        private void Update()
-        {
-            float[] mousePosition2D = { this.cursorPos.x, this.cursorPos.y };
-
-            // Send datas to the compute shader
-            this.shader.SetFloat("deltaTime", Time.deltaTime);
-            this.shader.SetFloats("mousePosition", mousePosition2D);
-
-            // Update the Particles
-            this.shader.Dispatch(this.kernelID, this.groupSizeX, 1, 1);
-        }
-
-        private void OnGUI()
-        {
-            Vector3 p = new();
-            Camera c = Camera.main;
-            Event e = Event.current;
-            Vector2 mousePos = new()
-            {
-                // Note that the y position from Event is inverted.
-                // Get the mouse position from Event.
-                x = e.mousePosition.x,
-                y = c.pixelHeight - e.mousePosition.y
-            };
-
-            p = c.ScreenToWorldPoint(new(mousePos.x, mousePos.y, c.nearClipPlane + 14));
-
-            this.cursorPos.x = p.x;
-            this.cursorPos.y = p.y;
-        
+            Graphics.DrawProceduralNow(MeshTopology.Triangles, 6, this.particleCount);
         }
     }
 }

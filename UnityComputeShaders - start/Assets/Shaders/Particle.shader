@@ -1,57 +1,62 @@
-﻿Shader "Custom/Particle" {
-	Properties     
-    {         
-        _PointSize("Point size", Float) = 5.0     
-    }  
+﻿Shader "Custom/Particle"
+{
+    Properties
+    {
+        _PointSize("Point size", Float) = 5
+    }
 
-	SubShader {
-		Pass {
-			Tags{ "RenderType" = "Opaque" }
-			LOD 200
-			Blend SrcAlpha one
+    SubShader
+    {
+        Pass
+        {
+            Tags { "RenderType" = "Opaque" }
+            LOD 200
+            Blend SrcAlpha One
 
-			CGPROGRAM
-			// Physically based Standard lighting model, and enable shadows on all light types
-			#pragma vertex vert
-			#pragma fragment frag
+            CGPROGRAM
+            // Physically based Standard lighting model, and enable shadows on all light types
+            #pragma vertex vert
+            #pragma fragment frag
+            // Use shader model 3.0 target, to get nicer looking lighting
+            #pragma target 5.0
 
-			uniform float _PointSize;
+            #include "UnityCG.cginc"
 
-			#include "UnityCG.cginc"
+            struct Particle
+            {
+                float3 position;
+                float3 velocity;
+                float life;
+            };
 
-			// Use shader model 3.0 target, to get nicer looking lighting
-			#pragma target 5.0
-		
-			struct v2f{
-				float4 position : SV_POSITION;
-				float4 color : COLOR;
-				float life : LIFE;
-				float size: PSIZE;
-			};
-		
+            struct v2f
+            {
+                float4 position: SV_POSITION;
+                fixed4 colour:   COLOR;
+                float life:      LIFE;
+                float size:      PSIZE;
+            };
 
-			v2f vert(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID)
-			{
-				v2f o = (v2f)0;
+            uniform float _PointSize;
+            StructuredBuffer<Particle> particles;
 
-				// Color
-				o.color = float4(1,0,0,1);
+            v2f vert(uint vertex_id : SV_VertexID, uint instance_id : SV_InstanceID)
+            {
+                v2f output;
+                Particle particle = particles[instance_id];
+                float value       = particle.life / 4;
+                output.colour     = saturate(fixed4(1 - value + 0.1, value + 0.1, 1, value));
+                output.position   = UnityObjectToClipPos(float4(particle.position, 1));
+                output.size       = _PointSize;
+                return output;
+            }
 
-				// Position
-				o.position = UnityObjectToClipPos(float4(0,0,0,0));
-				o.size = 1;
-
-				return o;
-			}
-
-			float4 frag(v2f i) : COLOR
-			{
-				return i.color;
-			}
-
-
-			ENDCG
-		}
-	}
-	FallBack Off
+            float4 frag(v2f i) : COLOR
+            {
+                return i.colour;
+            }
+            ENDCG
+        }
+    }
+    FallBack Off
 }

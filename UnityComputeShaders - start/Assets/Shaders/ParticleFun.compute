@@ -1,38 +1,54 @@
 ﻿#pragma kernel CSParticle
 
+struct Particle
+{
+    float3 position;
+    float3 velocity;
+    float life;
+};
 
-// Variables set from the CPU 
+// Variables set from the CPU
+RWStructuredBuffer<Particle> particles;
 float deltaTime;
 float2 mousePosition;
 
-uint rng_state;
-
-uint rand_xorshift()
+uint rng;
+uint randXorShift()
 {
-	// Xorshift algorithm from George Marsaglia's paper
-	rng_state ^= (rng_state << 13);
-	rng_state ^= (rng_state >> 17);
-	rng_state ^= (rng_state << 5);
-	return rng_state;
+    // Xor Shift algorithm from George Marsaglia's paper
+    rng ^= rng << 13;
+    rng ^= rng >> 17;
+    rng ^= rng << 5;
+    return rng;
 }
 
-void respawn(uint id)
+void respawn(const uint id)
 {
-	rng_state = id;
-	float tmp = (1.0 / 4294967296.0);
-	float f0 = float(rand_xorshift()) * tmp - 0.5;
-	float f1 = float(rand_xorshift()) * tmp - 0.5;
-	float f2 = float(rand_xorshift()) * tmp - 0.5;
-	float3 normalF3 = normalize(float3(f0, f1, f2)) * 0.8f;
-	normalF3 *= float(rand_xorshift()) * tmp;
-	/*particleBuffer[id].position = float3(normalF3.x + mousePosition.x, normalF3.y + mousePosition.y, normalF3.z + 3.0);
-	// reset the life of this particle
-	particleBuffer[id].life = 4;
-	particleBuffer[id].velocity = float3(0,0,0);*/
+    rng = id;
+    const float temp = 1.0 / 4294967296.0;
+    const float f0 = (randXorShift() * temp) - 0.5;
+    const float f1 = (randXorShift() * temp) - 0.5;
+    const float f2 = (randXorShift() * temp) - 0.5;
+
+    float3 normalF3 = normalize(float3(f0, f1, f2)) * 0.8f * randXorShift() * temp;
+    particles[id].position = float3(normalF3.x + mousePosition.x, normalF3.y + mousePosition.y, normalF3.z + 3);
+    // reset the life of this particle
+    particles[id].life     = 4;
+    particles[id].velocity = 0;
 }
 
 [numthreads(256, 1, 1)]
 void CSParticle(uint3 id : SV_DispatchThreadID)
 {
-	
+    Particle particle = particles[id.x];
+    particle.life -= deltaTime;
+    const float3 direction = normalize(float3(mousePosition, 3) - particle.position);
+    particle.velocity += direction;
+    particle.position += particle.velocity * deltaTime;
+    particles[id.x] = particle;
+
+    if (particle.life <= 0)
+    {
+        respawn(id.x);
+    }
 }

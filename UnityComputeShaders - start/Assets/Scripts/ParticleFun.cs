@@ -1,113 +1,106 @@
 ﻿using UnityEngine;
 
-#pragma warning disable 0649
-
 namespace UnityComputeShaders
 {
     public class ParticleFun : MonoBehaviour
     {
-
-        private Vector2 cursorPos;
-
-        // struct
+        #pragma warning disable 0649
+        // ReSharper disable NotAccessedField.Local
         private struct Particle
         {
             public Vector3 position;
             public Vector3 velocity;
             public float life;
         }
+        // ReSharper restore NotAccessedField.Local
+        #pragma warning restore 0649
 
+        private const string KERNEL     = "CSParticle";
         private const int SIZE_PARTICLE = 7 * sizeof(float);
 
-        public int particleCount = 1000000;
-        public Material material;
-        public ComputeShader shader;
-        [Range(1, 10)]
-        public int pointSize = 2;
+        private static readonly int ParticleBufferID = Shader.PropertyToID("particles");
+        private static readonly int PointSizeID      = Shader.PropertyToID("_PointSize");
+        private static readonly int DeltaTimeID      = Shader.PropertyToID("deltaTime");
+        private static readonly int MousePositionID  = Shader.PropertyToID("mousePosition");
 
+        [SerializeField]
+        private int particleCount = 1_000_000;
+        [SerializeField]
+        private Material material;
+        [SerializeField]
+        private ComputeShader shader;
+        [SerializeField, Range(1, 10)]
+        private int pointSize = 2;
+
+        private readonly float[] cursorPosition = new float[2];
         private int kernelID;
-        private ComputeBuffer particleBuffer;
+        private ComputeBuffer buffer;
+        private int groupSizeX;
 
-        private int groupSizeX; 
-    
-    
-        // Use this for initialization
-        private void Start()
+        private new Camera camera;
+        private Camera Camera
         {
-            Init();
+            get
+            {
+                if (!this.camera)
+                {
+                    this.camera = Camera.main;
+                }
+
+                return this.camera;
+            }
         }
 
-        private void Init()
+        private void Start()
         {
-            // initialize the particles
-            Particle[] particleArray = new Particle[this.particleCount];
-
+            // Initialize the particles
+            Particle[] particles = new Particle[this.particleCount];
             for (int i = 0; i < this.particleCount; i++)
             {
-                //TO DO: Initialize particle
+                ref Particle particle = ref particles[i];
+                particle.position     = Random.insideUnitSphere / 2f;
+                particle.position.z  += 3f;
+                particle.life         = Random.Range(1f, 4f);
             }
 
-            // create compute buffer
-            this.particleBuffer = new(this.particleCount, SIZE_PARTICLE);
+            // Create compute buffer
+            this.buffer = new(this.particleCount, SIZE_PARTICLE);
+            this.buffer.SetData(particles);
 
-            this.particleBuffer.SetData(particleArray);
-
-            // find the id of the kernel
-            this.kernelID = this.shader.FindKernel("CSParticle");
-
+            // Initialize shader
+            this.kernelID = this.shader.FindKernel(KERNEL);
             this.shader.GetKernelThreadGroupSizes(this.kernelID, out uint threadsX, out _, out _);
             this.groupSizeX = Mathf.CeilToInt(this.particleCount / (float)threadsX);
 
             // bind the compute buffer to the shader and the compute shader
-            this.shader.SetBuffer(this.kernelID, "particleBuffer", this.particleBuffer);
-            this.material.SetBuffer("particleBuffer", this.particleBuffer);
+            this.shader.SetBuffer(this.kernelID, ParticleBufferID, this.buffer);
+            this.material.SetBuffer(ParticleBufferID, this.buffer);
+            this.material.SetInt(PointSizeID, this.pointSize);
+        }
 
-            this.material.SetInt("_PointSize", this.pointSize);
+        private void OnDestroy()
+        {
+            this.buffer?.Release();
+        }
+
+        private void Update()
+        {
+            // Send data to the compute shader
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime);
+            this.shader.SetFloats(MousePositionID, this.cursorPosition);
+
+            // Update the Particles
+            this.shader.Dispatch(this.kernelID, this.groupSizeX, 1, 1);
+
+            Vector2 worldPosition = this.Camera.ScreenToWorldPoint(new(Input.mousePosition.x, Input.mousePosition.y, this.Camera.nearClipPlane + 14f)); // z = 3.
+            this.cursorPosition[0] = worldPosition.x;
+            this.cursorPosition[1] = worldPosition.y;
         }
 
         private void OnRenderObject()
         {
             this.material.SetPass(0);
             Graphics.DrawProceduralNow(MeshTopology.Points, 1, this.particleCount);
-        }
-
-        private void OnDestroy()
-        {
-            this.particleBuffer?.Release();
-        }
-
-        // Update is called once per frame
-        private void Update()
-        {
-
-            float[] mousePosition2D = { this.cursorPos.x, this.cursorPos.y };
-
-            // Send datas to the compute shader
-            this.shader.SetFloat("deltaTime", Time.deltaTime);
-            this.shader.SetFloats("mousePosition", mousePosition2D);
-
-            // Update the Particles
-            this.shader.Dispatch(this.kernelID, this.groupSizeX, 1, 1);
-        }
-
-        private void OnGUI()
-        {
-            Vector3 p = new();
-            Camera c = Camera.main;
-            Event e = Event.current;
-            Vector2 mousePos = new()
-            {
-                // Note that the y position from Event is inverted.
-                // Get the mouse position from Event.
-                x = e.mousePosition.x,
-                y = c.pixelHeight - e.mousePosition.y
-            };
-
-            p = c.ScreenToWorldPoint(new(mousePos.x, mousePos.y, c.nearClipPlane + 14)); // z = 3.
-
-            this.cursorPos.x = p.x;
-            this.cursorPos.y = p.y;
-        
         }
     }
 }

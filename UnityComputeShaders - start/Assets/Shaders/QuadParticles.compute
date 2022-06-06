@@ -1,68 +1,76 @@
-﻿#pragma kernel CSMain
+﻿#pragma kernel CSParticle
 
- // Particle's data
 struct Particle
 {
-	float3 position;
-	float3 velocity;
-	float life;
+    float3 position;
+    float3 velocity;
+    float life;
 };
 
-// Particle's data, shared with the shader
-RWStructuredBuffer<Particle> particleBuffer;
+struct Vertex
+{
+    float3 position;
+    float2 uv;
+    float life;
+};
 
-// Variables set from the CPU 
+// Variables set from the CPU
+RWStructuredBuffer<Particle> particles;
+RWStructuredBuffer<Vertex> vertices;
 float deltaTime;
 float2 mousePosition;
-float halfSize;
+float size;
 
-uint rng_state;
-
-// http://www.reedbeta.com/blog/quick-and-easy-gpu-random-numbers-in-d3d11/
-uint rand_xorshift()
+uint rng;
+uint randXorShift()
 {
-	// Xorshift algorithm from George Marsaglia's paper
-	rng_state ^= (rng_state << 13);
-	rng_state ^= (rng_state >> 17);
-	rng_state ^= (rng_state << 5);
-	return rng_state;
+    // Xor Shift algorithm from George Marsaglia's paper
+    rng ^= rng << 13;
+    rng ^= rng >> 17;
+    rng ^= rng << 5;
+    return rng;
 }
 
-void respawn(uint id)
+void respawn(const uint id)
 {
-	rng_state = id;
-	float tmp = (1.0 / 4294967296.0);
-	float f0 = float(rand_xorshift()) * tmp - 0.5;
-	float f1 = float(rand_xorshift()) * tmp - 0.5;
-	float f2 = float(rand_xorshift()) * tmp - 0.5;
-	float3 normalF3 = normalize(float3(f0, f1, f2)) * 0.8f;
-	normalF3 *= float(rand_xorshift()) * tmp;
-	particleBuffer[id].position = float3(normalF3.x + mousePosition.x, normalF3.y + mousePosition.y, normalF3.z + 3.0);
-	// reset the life of this particle
-	particleBuffer[id].life = 4;
-	particleBuffer[id].velocity = float3(0,0,0);
+    rng = id;
+    const float temp = 1.0 / 4294967296.0;
+    const float f0 = (randXorShift() * temp) - 0.5;
+    const float f1 = (randXorShift() * temp) - 0.5;
+    const float f2 = (randXorShift() * temp) - 0.5;
+
+    float3 normalF3 = normalize(float3(f0, f1, f2)) * 0.8f * randXorShift() * temp;
+    particles[id].position = float3(normalF3.x + mousePosition.x, normalF3.y + mousePosition.y, normalF3.z + 3);
+    // reset the life of this particle
+    particles[id].life     = 4;
+    particles[id].velocity = 0;
 }
 
 [numthreads(256, 1, 1)]
-void CSMain(uint3 id : SV_DispatchThreadID)
+void CSParticle(uint3 id : SV_DispatchThreadID)
 {
-	Particle p = particleBuffer[id.x];
-	
-	// subtract the life based on deltaTime
-	p.life -= deltaTime;
+    Particle particle = particles[id.x];
+    particle.life -= deltaTime;
+    if (particle.life <= 0)
+    {
+        respawn(id.x);
+    }
+    else
+    {
+        const float3 direction = normalize(float3(mousePosition, 3) - particle.position);
+        particle.velocity += direction;
+        particle.position += particle.velocity * deltaTime;
+        particles[id.x] = particle;
+    }
 
-	float3 delta = float3(mousePosition.xy, 3) - p.position;
-	float3 dir = normalize(delta);
-
-	p.velocity += dir;
-	p.position += p.velocity * deltaTime;
-
-	particleBuffer[id.x] = p;
-	
-	if (particleBuffer[id.x].life < 0){
-		respawn(id.x);
-		p = particleBuffer[id.x];
-	}
+    const float halfSize = size / 2;
+    [unroll(6)]
+    for (int i = id.x * 6, j = 0; j < 6; i++, j++)
+    {
+        Vertex vertex    = vertices[i];
+        vertex.position  = particle.position - float3(halfSize, halfSize, 0);
+        vertex.position += float3(vertex.uv * size, 0);
+        vertex.life      = particle.life;
+        vertices[i]      = vertex;
+    }
 }
-
-
