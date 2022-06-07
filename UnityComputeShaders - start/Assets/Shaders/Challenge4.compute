@@ -1,33 +1,14 @@
 ﻿#pragma kernel CSMain
+
 #define GROUP_SIZE 256
-#define PI2 6.28318530718
-
-float hash( float n )
-{
-	return frac(sin(n)*43758.5453);
-}
-
-// The noise function returns a value in the range -1.0f -> 1.0f 
-float noise1( float3 x )
-{
-	float3 p = floor(x);
-	float3 f = frac(x);
-
-	f       = f*f*(3.0-2.0*f);
-	float n = p.x + p.y*57.0 + 113.0*p.z;
-
-	return lerp(lerp(lerp( hash(n+0.0), hash(n+1.0),f.x),
-					lerp( hash(n+57.0), hash(n+58.0),f.x),f.y),
-				lerp(lerp( hash(n+113.0), hash(n+114.0),f.x),
-					lerp( hash(n+170.0), hash(n+171.0),f.x),f.y),f.z);
-}
+#define TWO_PI 6.28318530718
 
 struct Boid
 {
-	float3 position;
-	float3 direction;
-	float noise_offset;
-	float theta;
+    float3 position;
+    float3 direction;
+    float noise;
+    float theta;
 };
 
 RWStructuredBuffer<Boid> boidsBuffer;
@@ -37,63 +18,66 @@ float deltaTime;
 float rotationSpeed;
 float boidSpeed;
 float boidSpeedVariation;
-float3 flockTarget;
+float3 flockPosition;
 float neighbourDistance;
 int boidsCount;
 
-[numthreads(GROUP_SIZE,1,1)]
-void CSMain (uint3 id : SV_DispatchThreadID)
+float hash(const float n)
 {
-	uint instanceId = id.x;
-	Boid boid = boidsBuffer[instanceId];
-
-	float noise = clamp(noise1(time / 100.0 + boid.noise_offset), -1, 1) * 2.0 - 1.0;
-	float velocity = boidSpeed * (1.0 + noise * boidSpeedVariation);
-	boid.theta = fmod(boid.theta + deltaTime * 4, PI2);
-
-	float3 boid_pos = boid.position;
-	float3 boid_dir = boid.direction;
-
-	float3 separation = 0;
-	float3 alignment = 0;
-	float3 cohesion = flockPosition;
-
-	uint nearbyCount = 1; // Add self that is ignored in loop
-
-	for (uint i = 0; i < (uint)boidsCount; i++) {
-		if (i == instanceId)
-			continue;
-		
-		if (distance(boid_pos, boidsBuffer[i].position) < neighbourDistance)
-		{
-			float3 tempBoid_position = boidsBuffer[i].position;
-
-			float3 diff = boid_pos - tempBoid_position;
-			float diffLen = (length(diff));
-			float scaler = clamp(1.0 - diffLen / neighbourDistance, 0.0, 1.0);
-			
-			separation += diff * (scaler / diffLen);
-			alignment += boidsBuffer[i].direction;
-			cohesion += tempBoid_position;
-
-			nearbyCount += 1;
-		}
-	}
-
-
-	float avg = 1.0 / nearbyCount;
-	alignment *= avg;
-	cohesion *= avg;
-	cohesion = normalize(cohesion - boid_pos);
-
-	float3 direction = alignment + separation + cohesion;
-
-	float ip = exp(-rotationSpeed * deltaTime);
-	boid.direction = lerp((direction), normalize(boid_dir), ip);
-
-	boid.position += (boid.direction) * (velocity * deltaTime);
-
-	boidsBuffer[id.x] = boid;
+    return frac(sin(n) * 43758.5453);
 }
 
+// The noise function returns a value in the range 0 -> 1
+float noise(const float3 x)
+{
+    float3 p = floor(x);
+    float3 f = frac(x);
+    f        = f * f * (3 - (2 * f));
 
+    const float n = p.x + p.y * 57 + 113 * p.z;
+    return lerp(lerp(lerp(hash(n + 0),   hash(n + 1),   f.x),
+                     lerp(hash(n + 57),  hash(n + 58),  f.x), f.y),
+                lerp(lerp(hash(n + 113), hash(n + 114), f.x),
+                     lerp(hash(n + 170), hash(n + 171), f.x), f.y), f.z);
+}
+
+[numthreads(GROUP_SIZE, 1, 1)]
+void CSMain (uint3 id : SV_DispatchThreadID)
+{
+    Boid boid = boidsBuffer[id.x];
+
+    const float noiseOffset = (clamp(noise(time / 100 + boid.noise), -1, 1) * 2) - 1;
+    const float speed       = boidSpeed * (1 + (noiseOffset * boidSpeedVariation)) * deltaTime;
+
+    float3 separation = 0;
+    float3 alignment  = 0;
+    float3 cohesion   = flockPosition;
+    uint nearby = 1;
+    for (int i = 0; i < boidsCount; i++)
+    {
+        if ((uint)i == id.x) continue;
+
+        const Boid other = boidsBuffer[i];
+        const float dist = max(distance(boid.position, other.position), 1E-6);
+        if (dist >= neighbourDistance) continue;
+
+        nearby++;
+        alignment += other.direction;
+        cohesion  += other.position;
+
+        const float3 diff = normalize(boid.position - other.position);
+        separation       += diff * ((1 / dist) - (1 / neighbourDistance));
+    }
+
+    alignment /= nearby;
+    cohesion  /= nearby;
+    cohesion   = normalize(cohesion - boid.position);
+
+    const float3 direction = normalize(alignment + separation + cohesion);
+    const float t          = exp(-rotationSpeed * deltaTime); //This will be around 0.95
+    boid.direction         = normalize(lerp(direction, boid.direction, t));
+    boid.position         += boid.direction * speed;
+    boid.theta             = (boid.theta + speed) % TWO_PI;
+
+    boidsBuffer[id.x] = boid;
+}

@@ -10,6 +10,19 @@ struct Boid
     float frame;
 };
 
+RWStructuredBuffer<Boid> boidsBuffer;
+
+float time;
+float deltaTime;
+float rotationSpeed;
+float boidSpeed;
+float boidSpeedVariation;
+float3 flockPosition;
+float neighbourDistance;
+uint boidsCount;
+float boidFrameSpeed;
+int frameCount;
+
 float hash(const float n)
 {
     return frac(sin(n) * 43758.5453);
@@ -28,19 +41,6 @@ float noise(const float3 x)
                 lerp(lerp(hash(n + 113), hash(n + 114), f.x),
                      lerp(hash(n + 170), hash(n + 171), f.x), f.y), f.z);
 }
-
-RWStructuredBuffer<Boid> boidsBuffer;
-
-float time;
-float deltaTime;
-float rotationSpeed;
-float boidSpeed;
-float boidSpeedVariation;
-float3 flockPosition;
-float neighbourDistance;
-uint boidsCount;
-float boidFrameSpeed;
-int frameCount;
 
 [numthreads(GROUP_SIZE, 1, 1)]
 void CSMain (uint3 id : SV_DispatchThreadID)

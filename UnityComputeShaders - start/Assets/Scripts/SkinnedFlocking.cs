@@ -181,10 +181,7 @@ namespace UnityComputeShaders
             this.args[1] = (uint)this.boidsCount;
             this.argsBuffer.SetData(this.args);
 
-
-
             // Initialize the indirect draw args buffer.
-
             if (this.boidMaterial.IsKeywordEnabled(FRAME_INTERPOLATION))
             {
                 if (!this.frameInterpolation)
