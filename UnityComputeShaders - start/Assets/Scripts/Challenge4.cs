@@ -1,12 +1,11 @@
-﻿using System;
-using UnityEngine;
+﻿using UnityEngine;
 using Random = UnityEngine.Random;
 
 namespace UnityComputeShaders
 {
     public class Challenge4 : MonoBehaviour
     {
-        public struct Boid
+        private struct Boid
         {
             public Vector3 position;
             public Vector3 direction;

@@ -1,12 +1,16 @@
 ﻿#pragma kernel CSMain
+
 #define GROUP_SIZE 256
-#define PI2 6.28318530718
+#define GRAVITY  9.81
+#define DRAG 0.02
+#define COLLISION_LOSS 0.96
+#define BOUNCE_LOSS 0.8
 
 struct Ball
 {
-	float3 position;
-	float3 velocity;
-	float4 color;
+    float3 position;
+    float3 velocity;
+    float4 color;
 };
 
 RWStructuredBuffer<Ball> ballsBuffer;
@@ -14,23 +18,62 @@ RWStructuredBuffer<Ball> ballsBuffer;
 float deltaTime;
 int ballsCount;
 float radius;
-float4 limitsXZ;
+float4 limits;
 float floorY;
 
-#define LIMITS_MIN_X limitsXZ.x
-#define LIMITS_MAX_X limitsXZ.y
-#define LIMITS_MIN_Z limitsXZ.z
-#define LIMITS_MAX_Z limitsXZ.w
+#define LIMITS_MIN_X limits.x
+#define LIMITS_MAX_X limits.y
+#define LIMITS_MIN_Z limits.z
+#define LIMITS_MAX_Z limits.w
 #define LIMITS_MIN_Y floorY
 
-[numthreads(GROUP_SIZE,1,1)]
+[numthreads(GROUP_SIZE, 1, 1)]
 void CSMain (uint3 id : SV_DispatchThreadID)
 {
-	Ball ball = ballsBuffer[id.x];
+    Ball ball = ballsBuffer[id.x];
 
-	ball.position += ball.velocity * deltaTime;
+    // Check walls
+    if (ball.position.x < LIMITS_MIN_X || ball.position.x > LIMITS_MAX_X)
+    {
+        ball.position.x = clamp(ball.position.x, LIMITS_MIN_X, LIMITS_MAX_X);
+        ball.velocity.x = -ball.velocity.x * COLLISION_LOSS;
+    }
 
-	ballsBuffer[id.x] = ball;
+    if (ball.position.z < LIMITS_MIN_Z || ball.position.z > LIMITS_MAX_Z)
+    {
+        ball.position.z = clamp(ball.position.z, LIMITS_MIN_Z, LIMITS_MAX_Z);
+        ball.velocity.z = -ball.velocity.z * COLLISION_LOSS;
+    }
+
+    // Check floor
+    if (ball.position.y < LIMITS_MIN_Y)
+    {
+        ball.position.y   = LIMITS_MIN_Y;
+        ball.velocity.xz *= COLLISION_LOSS;
+        ball.velocity.y   = -ball.velocity.y * BOUNCE_LOSS;
+    }
+
+    // Handle collisions with other balls
+    for (int i = (int)id.x + 1; i < ballsCount; i++)
+    {
+        const Ball other       = ballsBuffer[(uint)i];
+        const float3 direction = ball.position - other.position;
+        const float distance   = length(direction);
+        if (distance >= radius * 2) continue;
+
+        const float3 push = direction * ((distance / 2) - radius);
+        ball.position    -= push;
+
+        const float3 relativeVelocity = ball.velocity - other.velocity;
+        const float3 normal           = normalize(push);
+        const float3 bounce           = normal * dot(relativeVelocity, normal);
+        ball.velocity -= bounce * COLLISION_LOSS;
+    }
+
+    // Apply drag and gravity
+    ball.velocity.xz -= ball.velocity.xz * DRAG * deltaTime;
+    ball.velocity.y  -= GRAVITY * deltaTime;
+
+    ball.position    += ball.velocity * deltaTime;
+    ballsBuffer[id.x] = ball;
 }
-
-

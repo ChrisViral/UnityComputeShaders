@@ -4,115 +4,120 @@ namespace UnityComputeShaders
 {
     public class SimplePhysics : MonoBehaviour
     {
-        public struct Ball
+        private struct Ball
         {
             public Vector3 position;
             public Vector3 velocity;
             public Color color;
-
-            public Ball(float posRange, float maxVel)
-            {
-                this.position.x = Random.value * posRange - posRange/2;
-                this.position.y = Random.value * posRange;
-                this.position.z = Random.value * posRange - posRange / 2;
-                this.velocity.x = Random.value * maxVel - maxVel/2;
-                this.velocity.y = Random.value * maxVel - maxVel / 2;
-                this.velocity.z = Random.value * maxVel - maxVel / 2;
-                this.color.r = Random.value;
-                this.color.g = Random.value;
-                this.color.b = Random.value;
-                this.color.a = 1;
-            }
         }
 
-        public ComputeShader shader;
+        private const string KERNEL   = "CSMain";
+        private const int BALL_STRIDE = 10 * sizeof(float);
+        private const int ARGS_STRIDE = 5  * sizeof(uint);
+        private const int ITERATIONS  = 5;
 
-        public Mesh ballMesh;
+        private static readonly int UniqueID      = Shader.PropertyToID("_UniqueID");
+        private static readonly int BallsBufferID = Shader.PropertyToID("ballsBuffer");
+        private static readonly int BallsCountID  = Shader.PropertyToID("ballsCount");
+        private static readonly int LimitsID      = Shader.PropertyToID("limits");
+        private static readonly int FloorID       = Shader.PropertyToID("floorY");
+        private static readonly int RadiusID      = Shader.PropertyToID("radius");
+        private static readonly int DeltaTimeID   = Shader.PropertyToID("deltaTime");
+        // ReSharper disable once InconsistentNaming
+        private static readonly int _RadiusID     = Shader.PropertyToID("_Radius");
+
+        [SerializeField]
+        public ComputeShader shader;
+        [SerializeField]
+        public Mesh mesh;
+        [SerializeField]
         public Material ballMaterial;
+        [SerializeField]
         public int ballsCount;
+        [SerializeField, Range(0.01f, 3f)]
         public float radius = 0.08f;
 
         private int kernelHandle;
         private ComputeBuffer ballsBuffer;
         private ComputeBuffer argsBuffer;
-        private uint[] args = new uint[5] { 0, 0, 0, 0, 0 };
-        private Ball[] ballsArray;
+        private readonly uint[] args = new uint[5];
+        private Ball[] balls;
         private int groupSizeX;
-        private int numOfBalls;
         private Bounds bounds;
-
         private MaterialPropertyBlock props;
 
         private void Start()
         {
-            this.kernelHandle = this.shader.FindKernel("CSMain");
+            this.kernelHandle = this.shader.FindKernel(KERNEL);
 
             this.shader.GetKernelThreadGroupSizes(this.kernelHandle, out uint x, out _, out _);
             this.groupSizeX = Mathf.CeilToInt(this.ballsCount / (float)x);
-            this.numOfBalls = this.groupSizeX * (int)x;
+            this.ballsCount = this.groupSizeX * (int)x;
 
             this.props = new();
-            this.props.SetFloat("_UniqueID", Random.value);
-
-            this.bounds = new(Vector3.zero, Vector3.one * 1000);
+            this.props.SetFloat(UniqueID, Random.value);
+            this.bounds = new(Vector3.zero, new(1000f, 1000f, 1000f));
 
             InitBalls();
             InitShader();
         }
 
+        private void OnDestroy()
+        {
+            this.ballsBuffer?.Dispose();
+            this.argsBuffer?.Dispose();
+        }
+
+        private void Update()
+        {
+            this.shader.SetFloat(DeltaTimeID, Time.deltaTime / ITERATIONS);
+
+            for (int i = 0; i < ITERATIONS; i++)
+            {
+                this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
+            }
+
+            Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.ballMaterial, this.bounds, this.argsBuffer, 0, this.props);
+        }
+
         private void InitBalls()
         {
-            this.ballsArray = new Ball[this.numOfBalls];
-
-            for (int i = 0; i < this.numOfBalls; i++)
+            this.balls = new Ball[this.ballsCount];
+            Random.InitState(new System.Random().Next());
+            for (int i = 0; i < this.ballsCount; i++)
             {
-                this.ballsArray[i] = new(4, 1.0f);
+                Vector3 position = Random.insideUnitSphere * 2f;
+                position.y       = Mathf.Abs(position.y);
+                this.balls[i] = new()
+                {
+                    position = position,
+                    velocity = Random.onUnitSphere,
+                    color    = Random.ColorHSV(0f, 1f, 0.75f, 1f, 0.5f, 1f)
+                };
             }
         }
 
         private void InitShader()
         {
-            this.ballsBuffer = new(this.numOfBalls, 10 * sizeof(float));
-            this.ballsBuffer.SetData(this.ballsArray);
+            this.ballsBuffer = new(this.ballsCount, BALL_STRIDE);
+            this.ballsBuffer.SetData(this.balls);
 
-            this.argsBuffer = new(1, 5 * sizeof(uint), ComputeBufferType.IndirectArguments);
-            if (this.ballMesh != null)
-            {
-                this.args[0] = this.ballMesh.GetIndexCount(0);
-                this.args[1] = (uint)this.numOfBalls;
-                this.args[2] = this.ballMesh.GetIndexStart(0);
-                this.args[3] = this.ballMesh.GetBaseVertex(0);
-            }
+            this.shader.SetBuffer(this.kernelHandle, BallsBufferID, this.ballsBuffer);
+            this.ballMaterial.SetBuffer(BallsBufferID, this.ballsBuffer);
+
+            this.shader.SetInt(BallsCountID, this.ballsCount);
+            this.shader.SetVector(LimitsID, new(-2.5f + this.radius, 2.5f - this.radius, -2.5f + this.radius, 2.5f - this.radius));
+            this.shader.SetFloat(FloorID, -2.5f + this.radius);
+            this.shader.SetFloat(RadiusID, this.radius);
+
+            this.ballMaterial.SetFloat(_RadiusID, this.radius * 2f);
+
+            this.argsBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
+            this.args[0]    = this.mesh.GetIndexCount(0);
+            this.args[1]    = (uint)this.ballsCount;
+            this.args[2]    = this.mesh.GetIndexStart(0);
+            this.args[3]    = this.mesh.GetBaseVertex(0);
             this.argsBuffer.SetData(this.args);
-
-            this.shader.SetBuffer(this.kernelHandle, "ballsBuffer", this.ballsBuffer);
-            this.shader.SetInt("ballsCount", this.numOfBalls);
-            this.shader.SetVector("limitsXZ", new(-2.5f+this.radius, 2.5f-this.radius, -2.5f+this.radius, 2.5f-this.radius));
-            this.shader.SetFloat("floorY", -2.5f+this.radius);
-            this.shader.SetFloat("radius", this.radius);
-
-            this.ballMaterial.SetFloat("_Radius", this.radius*2);
-            this.ballMaterial.SetBuffer("ballsBuffer", this.ballsBuffer);
-        }
-
-        private void Update()
-        {
-            int iterations = 5;
-            this.shader.SetFloat("deltaTime", Time.deltaTime/iterations);
-
-            for (int i = 0; i < iterations; i++)
-            {
-                this.shader.Dispatch(this.kernelHandle, this.groupSizeX, 1, 1);
-            }
-
-            Graphics.DrawMeshInstancedIndirect(this.ballMesh, 0, this.ballMaterial, this.bounds, this.argsBuffer, 0, this.props);
-        }
-
-        private void OnDestroy()
-        {
-            this.ballsBuffer?.Dispose();
-
-            this.argsBuffer?.Dispose();
         }
     }
 }
