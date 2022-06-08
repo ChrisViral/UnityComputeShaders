@@ -100,16 +100,16 @@ Shader "Flocking/Skinned"
             #endif
         }
 
-         void surf(Input IN, inout SurfaceOutputStandard OUT)
-         {
-            fixed4 colour   = tex2D(_MainTex, IN.uv_MainTex) * _Colour;
-            fixed4 metallic = tex2D(_MetallicMap, IN.uv_MainTex);
-            OUT.Albedo      = colour.rgb;
-            OUT.Alpha       = colour.a;
-            OUT.Normal      = UnpackNormal(tex2D(_NormalMap, IN.uv_NormalMap));
-            OUT.Metallic    = metallic.r;
-            OUT.Smoothness  = _Glossiness * metallic.a;
-         }
-         ENDCG
+        void surf(Input IN, inout SurfaceOutputStandard OUT)
+        {
+           fixed4 colour   = tex2D(_MainTex, IN.uv_MainTex) * _Colour;
+           fixed4 metallic = tex2D(_MetallicMap, IN.uv_MainTex);
+           OUT.Albedo      = colour.rgb;
+           OUT.Alpha       = colour.a;
+           OUT.Normal      = UnpackNormal(tex2D(_NormalMap, IN.uv_NormalMap));
+           OUT.Metallic    = metallic.r;
+           OUT.Smoothness  = _Glossiness * metallic.a;
+        }
+        ENDCG
    }
 }

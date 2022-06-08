@@ -1,75 +1,86 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
-#define CLEAR_GRID_THREAD_COUNT 8
-#define RIGID_BODY_THREAD_COUNT 8
-#define PARTICLE_THREAD_COUNT 8
-
-inline float4 quat_concat(float4 q1, float4 q2)
-{
-  return float4(q1.w * q2.xyz + q2.w * q1.xyz + cross(q1.xyz, q2.xyz), q1.w * q2.w - dot(q1.xyz, q2.xyz));
-}
-
-inline float3 quat_mul(float4 q, float3 v)
-{
-  return dot(q.xyz, v) * q.xyz + q.w * q.w * v + 2.0 * q.w * cross(q.xyz, v) - cross(cross(q.xyz, v), q.xyz);
-}
 
 // Kernels
-
 #pragma kernel GenerateParticleValues
 #pragma kernel CollisionDetection
 #pragma kernel ComputeMomenta
 #pragma kernel ComputePositionAndRotation
 
-struct RigidBody
+#define CLEAR_GRID_THREAD_COUNT 8
+#define RIGIDBODY_THREAD_COUNT 8
+#define PARTICLE_THREAD_COUNT 8
+
+struct Rigidbody
 {
-	float3 position;
-	float4 quaternion;
-	float3 velocity;
-	float3 angularVelocity;
-	int particleIndex;
-	int particleCount;
+    float3 position;
+    float4 rotation;
+    float3 velocity;
+    float3 angularVelocity;
+    int particleOffset;
 };
 
 struct Particle
 {
-	float3 position;
-	float3 velocity;
-	float3 force;
-	float3 localPosition;
-	float3 offsetPosition;
+    float3 position;
+    float3 velocity;
+    float3 force;
+    float3 localPosition;
+    float3 offsetPosition;
 };
 
 struct Voxel
 {
-	int4 vox1;
-	int4 vox2;
+    int4 vox1;
+    int4 vox2;
 };
 
-shared RWStructuredBuffer<RigidBody> rigidBodiesBuffer;
-shared RWStructuredBuffer<Particle> particlesBuffer;
-shared RWStructuredBuffer<Voxel> voxelGridBuffer;
+shared RWStructuredBuffer<Rigidbody> rigidbodies;
+shared RWStructuredBuffer<Particle> particles;
+shared RWStructuredBuffer<Voxel> voxels;
 
-int particleCount;
-int particlesPerRigidBody;
-float deltaTime;
-float particleMass;
+inline float4 quaternionConcat(const float4 q1, const float4 q2)
+{
+  return float4((q1.w * q2.xyz) + (q2.w * q1.xyz) + cross(q1.xyz, q2.xyz), (q1.w * q2.w) - dot(q1.xyz, q2.xyz));
+}
+
+inline float3 quaternionMul(const float4 q, const float3 v)
+{
+  return (dot(q.xyz, v) * q.xyz) + (q.w * q.w * v) + (2 * q.w * cross(q.xyz, v)) - cross(cross(q.xyz, v), q.xyz);
+}
 
 //////////////////////////////
 // Generate Particle Values //
 //////////////////////////////
-// Per Rigid Body
-// Use rigidBody positions and 
-// rigidBodyQuaternions to
+// Per Rigidbody
+// Use rigidbody positions and
+// rigidbody quaternions to
 // Generate
 // particle.position
 // particle.offsetPosition
 // particle.velocity
 //
 //////////////////////////////
-[numthreads(RIGID_BODY_THREAD_COUNT,1,1)]
-void GenerateParticleValues (uint3 id : SV_DispatchThreadID)
-{
 
+int particleCount;
+int particlesPerBody;
+float deltaTime;
+float particleMass;
+
+[numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
+void GenerateParticleValues(uint3 id : SV_DispatchThreadID)
+{
+    const Rigidbody body = rigidbodies[id.x];
+    for (int i = 0; i < particlesPerBody; i++)
+    {
+        const int index   = body.particleOffset + i;
+        Particle particle = particles[index];
+
+        particle.offsetPosition = quaternionMul(body.rotation, particle.localPosition);
+        particle.position       = body.position + particle.offsetPosition;
+        particle.velocity       = body.velocity + cross(body.angularVelocity, particle.offsetPosition);
+
+        particles[index] = particle;
+    }
 }
 
 /////////////////////////
@@ -83,17 +94,17 @@ float tangentialCoefficient;
 float gravityCoefficient;
 float particleDiameter;
 
-float3 CollisionReaction(int j_id, int i_id)
+float3 CollisionReaction(const int j, const int i)
 {
-	float3 force = 0;
+    float3 force = 0;
 
-	return force;
+    return force;
 }
 
-[numthreads(PARTICLE_THREAD_COUNT,1,1)]
-void CollisionDetection (uint3 id : SV_DispatchThreadID)
+[numthreads(PARTICLE_THREAD_COUNT, 1, 1)]
+void CollisionDetection(uint3 id : SV_DispatchThreadID)
 {
-	
+
 }
 
 ////////////////////////////
@@ -102,24 +113,24 @@ void CollisionDetection (uint3 id : SV_DispatchThreadID)
 // Per RigidBdy
 // Use particle forces to compute the force and angular force on the rigid body
 float frictionCoefficient;
+float linearForceScalar;
 float angularFrictionCoefficient;
 float angularForceScalar;
-float linearForceScalar;
 int activeCount;
 
-[numthreads(RIGID_BODY_THREAD_COUNT,1,1)]
-void ComputeMomenta (uint3 id : SV_DispatchThreadID)
+[numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
+void ComputeMomenta(uint3 id : SV_DispatchThreadID)
 {
-	
+
 }
 
 /////////////////////////////
 // Computation Of Position //
 /////////////////////////////
 // Per RigidBody
-// Use rigidBodyForce and rigidBodyTorque to compute the rigid body position and rotation. 
-[numthreads(RIGID_BODY_THREAD_COUNT,1,1)]
-void ComputePositionAndRotation (uint3 id : SV_DispatchThreadID)
+// Use rigidBodyForce and rigidBodyTorque to compute the rigid body position and rotation.
+[numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
+void ComputePositionAndRotation(uint3 id : SV_DispatchThreadID)
 {
-	
+
 }
