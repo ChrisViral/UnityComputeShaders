@@ -261,12 +261,12 @@ MonoBehaviour:
   springCoefficient: 2.5
   dampingCoefficient: 0.01
   tangentialCoefficient: 0.01
-  gravityCoefficient: 0.002
+  gravityCoefficient: 2
   frictionCoefficient: 0.1
   angularFrictionCoefficient: 0.1
   angularForceScalar: 100
   linearForceScalar: 100
-  rigidbodyCount: 1000
+  rigidbodyCount: 10
   stepsPerUpdate: 10
 --- !u!4 &411714672
 Transform:

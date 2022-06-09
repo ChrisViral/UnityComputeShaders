@@ -1,5 +1,7 @@
-﻿using CjLib;
+﻿using System;
+using CjLib;
 using UnityEngine;
+using Random = UnityEngine.Random;
 
 namespace UnityComputeShaders
 {
@@ -53,6 +55,7 @@ namespace UnityComputeShaders
         private const string COLLISION_KERNEL = "CollisionDetection";
         private const string MOMENTA_KERNEL   = "ComputeMomenta";
         private const string COMPUTE_KERNEL   = "ComputePositionAndRotation";
+        private const float STANDARD_GRAVITY  = 9.80665f;
 
         private static readonly int RigidBodiesBufferID          = Shader.PropertyToID("rigidbodies");
         private static readonly int ParticlesBufferID            = Shader.PropertyToID("particles");
@@ -92,7 +95,7 @@ namespace UnityComputeShaders
         private float dampingCoefficient;
         [SerializeField, Range(0.001f, 2f)]
         private float tangentialCoefficient;
-        [SerializeField, Range(0.001f, 2f)]
+        [SerializeField, Range(0.5f, 10f)]
         private float gravityCoefficient;
         [SerializeField, Range(0.1f, 10f)]
         private float frictionCoefficient;
@@ -159,6 +162,12 @@ namespace UnityComputeShaders
 
         private void Update()
         {
+
+            Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.cubeMaterial, this.bounds, this.argsBuffer);
+        }
+
+        private void FixedUpdate()
+        {
             if (this.activeCount < this.rigidbodyCount && this.frameCounter++ > 5)
             {
                 this.activeCount++;
@@ -169,7 +178,7 @@ namespace UnityComputeShaders
                 this.argsBuffer.SetData(this.args);
             }
 
-            this.shader.SetFloat(DeltaTimeID, Time.deltaTime / this.stepsPerUpdate);
+            this.shader.SetFloat(DeltaTimeID, Time.fixedDeltaTime / this.stepsPerUpdate);
 
             for (int i = 0; i < this.stepsPerUpdate; i++)
             {
@@ -178,8 +187,6 @@ namespace UnityComputeShaders
                 this.shader.Dispatch(this.computeMomentaHandle, this.groupsPerRigidbody, 1, 1);
                 this.shader.Dispatch(this.computePositionAndRotationHandle, this.groupsPerRigidbody, 1, 1);
             }
-
-            Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.cubeMaterial, this.bounds, this.argsBuffer);
         }
         #endregion
 
@@ -196,7 +203,7 @@ namespace UnityComputeShaders
             for (int i = 0, offset = 0; i < this.rigidbodyCount; i++, offset += this.particlesPerBody)
             {
                 Vector3 position = Random.insideUnitSphere * 5f;
-                position.y      += 15f;
+                position.y      += 10f;
                 this.rigidbodies[i] = new()
                 {
                     position       = position,
@@ -263,7 +270,7 @@ namespace UnityComputeShaders
             this.shader.SetFloat(SpringCoefficientID, this.springCoefficient);
             this.shader.SetFloat(DampingCoefficientID, this.dampingCoefficient);
             this.shader.SetFloat(TangentialCoefficientID, this.tangentialCoefficient);
-            this.shader.SetFloat(GravityCoefficientID, this.gravityCoefficient);
+            this.shader.SetFloat(GravityCoefficientID, this.gravityCoefficient * STANDARD_GRAVITY);
             this.shader.SetFloat(ParticleDiameterID, this.particleDiameter);
             this.shader.SetFloat(FrictionCoefficientID, this.frictionCoefficient);
             this.shader.SetFloat(LinearForceScalarID, this.linearForceScalar);

@@ -85,7 +85,7 @@
         void setup()
         {
             #ifdef UNITY_PROCEDURAL_INSTANCING_ENABLED
-            Rigidbody body      = rigidbodiesBuffer[unity_InstanceID];
+            Rigidbody body      = rigidbodies[unity_InstanceID];
             _DisplacementMatrix = getDisplacementMatrix(body.position, body.rotation);
             #endif
         }

@@ -7,8 +7,9 @@
 #pragma kernel ComputePositionAndRotation
 
 #define CLEAR_GRID_THREAD_COUNT 8
-#define RIGIDBODY_THREAD_COUNT 8
-#define PARTICLE_THREAD_COUNT 8
+#define RIGIDBODY_THREAD_COUNT 16
+#define PARTICLE_THREAD_COUNT 16
+#define THRESHOLD 1E-6
 
 struct Rigidbody
 {
@@ -37,15 +38,27 @@ struct Voxel
 shared RWStructuredBuffer<Rigidbody> rigidbodies;
 shared RWStructuredBuffer<Particle> particles;
 shared RWStructuredBuffer<Voxel> voxels;
+int activeCount;
+int particlesPerBody;
 
 inline float4 quaternionConcat(const float4 q1, const float4 q2)
 {
-  return float4((q1.w * q2.xyz) + (q2.w * q1.xyz) + cross(q1.xyz, q2.xyz), (q1.w * q2.w) - dot(q1.xyz, q2.xyz));
+    return float4((q1.w * q2.xyz) + (q2.w * q1.xyz) + cross(q1.xyz, q2.xyz), (q1.w * q2.w) - dot(q1.xyz, q2.xyz));
 }
 
 inline float3 quaternionMul(const float4 q, const float3 v)
 {
-  return (dot(q.xyz, v) * q.xyz) + (q.w * q.w * v) + (2 * q.w * cross(q.xyz, v)) - cross(cross(q.xyz, v), q.xyz);
+    return (dot(q.xyz, v) * q.xyz) + (q.w * q.w * v) + (2 * q.w * cross(q.xyz, v)) - cross(cross(q.xyz, v), q.xyz);
+}
+
+inline bool checkBodyActive(const int id)
+{
+    return id < activeCount;
+}
+
+inline bool checkParticleActive(const int id)
+{
+    return id < (activeCount * particlesPerBody);
 }
 
 //////////////////////////////
@@ -62,13 +75,14 @@ inline float3 quaternionMul(const float4 q, const float3 v)
 //////////////////////////////
 
 int particleCount;
-int particlesPerBody;
 float deltaTime;
 float particleMass;
 
 [numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
 void GenerateParticleValues(uint3 id : SV_DispatchThreadID)
 {
+    if (!checkBodyActive(id.x)) return;
+
     const Rigidbody body = rigidbodies[id.x];
     for (int i = 0; i < particlesPerBody; i++)
     {
@@ -94,17 +108,56 @@ float tangentialCoefficient;
 float gravityCoefficient;
 float particleDiameter;
 
-float3 CollisionReaction(const int j, const int i)
+float3 CollisionReaction(const int i, const int j)
 {
     float3 force = 0;
+    Particle first;
+    Particle second = particles[j];
 
+    if (i >= 0)
+    {
+        first = particles[i];
+    }
+    else
+    {
+        const float radius    = particleDiameter / 2;
+        first.position = float3(second.position.x, min(-radius, second.position.y - radius), second.position.z);
+        first.velocity = 0;
+    }
+
+    const float3 relativePosition = first.position - second.position;
+    const float dist              = length(relativePosition);
+    if (dist < particleDiameter)
+    {
+        const float3 direction = relativePosition / dist;
+        const float3 repulsive = -springCoefficient * (particleDiameter - dist) * direction;
+
+        const float3 relativeVelocity = first.velocity - second.velocity;
+        const float3 damping          = relativeVelocity * dampingCoefficient;
+
+        const float3 tangentialVelocity = relativeVelocity - (dot(relativePosition, direction) * direction);
+        const float3 tangential         = tangentialVelocity * tangentialCoefficient;
+
+        force = repulsive + damping + tangential;
+    }
     return force;
 }
 
 [numthreads(PARTICLE_THREAD_COUNT, 1, 1)]
 void CollisionDetection(uint3 id : SV_DispatchThreadID)
 {
+    if (!checkParticleActive(id.x)) return;
 
+    float3 force = 0;
+    for (int i = -1; i < particleCount; i++)
+    {
+        if (i == (int)id.x) continue;
+
+        force += CollisionReaction(i, id.x);
+    }
+
+    force.y -= gravityCoefficient * particleMass * deltaTime;
+    particles[id.x].force = force;
 }
 
 ////////////////////////////
@@ -116,12 +169,41 @@ float frictionCoefficient;
 float linearForceScalar;
 float angularFrictionCoefficient;
 float angularForceScalar;
-int activeCount;
 
 [numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
 void ComputeMomenta(uint3 id : SV_DispatchThreadID)
 {
+    if (!checkBodyActive(id.x)) return;
 
+    float3 linearForce  = 0;
+    float3 angularForce = 0;
+    Rigidbody body      = rigidbodies[id.x];
+
+    for (int i = 0; i < particlesPerBody; i++)
+    {
+        const Particle particle = particles[body.particleOffset + i];
+        linearForce            += particle.force;
+        angularForce           += cross(particle.offsetPosition, particle.force);
+    }
+
+    const float mass = particlesPerBody * particleMass;
+    body.velocity   /= 1 + (frictionCoefficient * deltaTime);
+    body.velocity   += linearForce * mass * linearForceScalar * deltaTime;
+
+    body.angularVelocity /= 1 + (deltaTime * angularFrictionCoefficient);
+    body.angularVelocity += angularForce * angularForceScalar * deltaTime;
+
+    if (length(body.velocity) < THRESHOLD)
+    {
+        body.velocity = 0;
+    }
+
+    if (length(body.angularVelocity) < THRESHOLD)
+    {
+        body.angularVelocity = 0;
+    }
+
+    rigidbodies[id.x] = body;
 }
 
 /////////////////////////////
@@ -132,5 +214,13 @@ void ComputeMomenta(uint3 id : SV_DispatchThreadID)
 [numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
 void ComputePositionAndRotation(uint3 id : SV_DispatchThreadID)
 {
+    if (!checkBodyActive(id.x)) return;
 
+    Rigidbody body = rigidbodies[id.x];
+    body.position += body.velocity * deltaTime;
+
+    const float4 omega = float4(body.angularVelocity, 0);
+    body.rotation      = normalize(body.rotation + (quaternionConcat(omega, body.rotation) / 2) * deltaTime);
+
+    rigidbodies[id.x] = body;
 }
