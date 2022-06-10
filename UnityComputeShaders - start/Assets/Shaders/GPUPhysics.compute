@@ -13,6 +13,9 @@
 #define RIGIDBODY_THREAD_COUNT 16
 #define PARTICLE_THREAD_COUNT 16
 #define THRESHOLD 1E-6
+#define GROUND_INDEX -1
+#define EMPTY -1
+#define VOXEL_SIZE 8
 
 struct Rigidbody
 {
@@ -34,8 +37,7 @@ struct Particle
 
 struct Voxel
 {
-    int4 voxel1;
-    int4 voxel2;
+    int buffer[VOXEL_SIZE];
 };
 
 shared RWStructuredBuffer<Rigidbody> rigidbodies;
@@ -89,14 +91,12 @@ void GenerateParticleValues(uint3 id : SV_DispatchThreadID)
     const Rigidbody body = rigidbodies[id.x];
     for (int i = 0; i < particlesPerBody; i++)
     {
-        const int index   = body.particleOffset + i;
-        Particle particle = particles[index];
-
+        const int index = body.particleOffset + i;
+        Particle particle       = particles[body.particleOffset + i];
         particle.offsetPosition = quaternionMul(body.rotation, particle.localPosition);
         particle.position       = body.position + particle.offsetPosition;
         particle.velocity       = body.velocity + cross(body.angularVelocity, particle.offsetPosition);
-
-        particles[index] = particle;
+        particles[index]        = particle;
     }
 }
 
@@ -107,7 +107,7 @@ void GenerateParticleValues(uint3 id : SV_DispatchThreadID)
 // Use particlePositions
 // to populate the
 // voxelGridBuffer
-//////////////////////
+/////////////////////
 
 int3 gridDimensions;
 float3 gridStartPosition;
@@ -117,17 +117,21 @@ float particleDiameter;
 [numthreads(GRID_THREAD_COUNT, 1, 1)]
 void ClearGrid (uint3 id : SV_DispatchThreadID)
 {
-    Voxel voxel;
-    voxel.voxel1 = -1;
-    voxel.voxel2 = -1;
+
+    Voxel voxel = voxels[id.x];
+    [unroll(VOXEL_SIZE)]
+    for (int i = 0; i < VOXEL_SIZE; i++)
+    {
+        voxel.buffer[i] = EMPTY;
+    }
     voxels[id.x] = voxel;
 }
 
 // Returns the grid index for particle p
 int GetParticleGridIndex(const int id)
 {
-    const int3 gridLocation = (particles[id].position - gridStartPosition.xyz) / particleDiameter;
-    return gridLocation.x + (gridDimensions.x * gridLocation.y) + (gridDimensions.x * gridDimensions.y * gridLocation.z);
+    const int3 gridLocation = (particles[id].position - gridStartPosition) / particleDiameter;
+    return gridLocation.x + gridDimensions.x * gridLocation.y + (gridDimensions.x * gridDimensions.y * gridLocation.z);
 }
 
 [numthreads(PARTICLE_THREAD_COUNT, 1, 1)]
@@ -136,40 +140,16 @@ void PopulateGrid (uint3 id : SV_DispatchThreadID)
     if (!checkParticleActive(id.x)) return;
 
     const int index = GetParticleGridIndex(id.x);
-    if (index < 0 || index >= gridMax) return;
+    if (index >= gridMax || index < 0) return;
 
     Voxel voxel = voxels[index];
-    if (voxel.voxel1.x == -1)
+    for (int i = 0; i < VOXEL_SIZE; i++)
     {
-        voxel.voxel1.x = id.x;
-    }
-    else if (voxel.voxel1.y == -1)
-    {
-        voxel.voxel1.y = id.x;
-    }
-    else if (voxel.voxel1.z == -1)
-    {
-        voxel.voxel1.z = id.x;
-    }
-    else if (voxel.voxel1.w == -1)
-    {
-        voxel.voxel1.w = id.x;
-    }
-    else if (voxel.voxel2.x == -1)
-    {
-        voxel.voxel2.x = id.x;
-    }
-    else if (voxel.voxel2.y == -1)
-    {
-        voxel.voxel2.y = id.x;
-    }
-    else if (voxel.voxel2.z == -1)
-    {
-        voxel.voxel2.z = id.x;
-    }
-    else if (voxel.voxel2.w == -1)
-    {
-        voxel.voxel2.w = id.x;
+        if (voxel.buffer[i] == EMPTY)
+        {
+            voxel.buffer[i] = id.x;
+            break;
+        }
     }
 
     voxels[index] = voxel;
@@ -180,6 +160,7 @@ void PopulateGrid (uint3 id : SV_DispatchThreadID)
 /////////////////////////
 // Per Particle
 // Use particle positions, grid and velocity to compute Particle force
+/////////////////////////
 float springCoefficient;
 float dampingCoefficient;
 float tangentialCoefficient;
@@ -187,52 +168,48 @@ float gravityCoefficient;
 
 float3 CollisionReaction(const int i, const int j)
 {
-    float3 force = 0;
-    Particle first;
-    Particle second = particles[j];
+    Particle first, second = particles[j];
 
-    if (i >= 0)
+    if (i != GROUND_INDEX)
     {
         first = particles[i];
     }
     else
     {
-        const float radius    = particleDiameter / 2;
-        first.position = float3(second.position.x, min(-radius, second.position.y - radius), second.position.z);
-        first.velocity = 0;
+        first.position     = second.position;
+        const float radius = particleDiameter / 2;
+        first.position.y   = min(-radius, second.position.y - radius);
+        first.velocity     = 0;
     }
 
     const float3 relativePosition = first.position - second.position;
     const float dist              = length(relativePosition);
-    if (dist < particleDiameter)
-    {
-        const float3 direction = relativePosition / dist;
-        const float3 repulsive = -springCoefficient * (particleDiameter - dist) * direction;
+    if (dist >= particleDiameter) return 0;
 
-        const float3 relativeVelocity = first.velocity - second.velocity;
-        const float3 damping          = relativeVelocity * dampingCoefficient;
+    const float3 direction          = relativePosition / dist;
+    const float3 relativeVelocity   = first.velocity - second.velocity;
+    const float3 tangentialVelocity = relativeVelocity - (dot(relativeVelocity, direction) * direction);
 
-        const float3 tangentialVelocity = relativeVelocity - (dot(relativePosition, direction) * direction);
-        const float3 tangential         = tangentialVelocity * tangentialCoefficient;
+    const float3 repulsive  = -springCoefficient * (particleDiameter - dist) * direction;
+    const float3 damping    = dampingCoefficient * relativeVelocity;
+    const float3 tangential = tangentialCoefficient * tangentialVelocity;
 
-        force = repulsive + damping + tangential;
-    }
-    return force;
+    return repulsive + damping + tangential;
 }
 
 // Returns the grid location for particle p
-int3 GetParticleGridLocation(const int id)
+inline int3 GetParticleGridLocation(const int id)
 {
-    return (particles[id].position - gridStartPosition.xyz) / particleDiameter;
+    return (particles[id].position - gridStartPosition) / particleDiameter;
 }
 
 // Converts a grid location to a grid index
-int GetGridIndex(const int x, const int y, const int z)
+inline int GetGridIndex(const int x, const int y, const int z)
 {
     return x + (gridDimensions.x * y) + (gridDimensions.x * gridDimensions.y * z);
 }
 
-int GetGridIndex(int3 location)
+inline int GetGridIndex(const int3 location)
 {
     return location.x + (gridDimensions.x * location.y) + (gridDimensions.x * gridDimensions.y * location.z);
 }
@@ -240,52 +217,21 @@ int GetGridIndex(int3 location)
 // checks cell x,y,z for collision with i, calls CollisionReaction if so
 float3 ForceFromGridCell(const int j, const int x, const int y, const int z)
 {
-    if (x < -1 || x > gridDimensions.x || y < -1 || y > gridDimensions.y || z < -1 || z > gridDimensions.z) return 0;
+    float3 force = 0;
+    if (x < 0 || x >= gridDimensions.x || y < 0 || y >= gridDimensions.y || z < 0 || z >= gridDimensions.z) return 0;
 
     const int index = GetGridIndex(x, y, z);
-    if (index < 0 || index >= gridMax) return 0;
+    if (index >= gridMax) return 0;
 
-    float3 force = 0;
-    Voxel voxel = voxels[index];
-    int i = voxel.voxel1.x;
-    if (i != -1 && i != j)
+    const Voxel voxel = voxels[index];
+    [unroll(VOXEL_SIZE)]
+    for (int k = 0; k < VOXEL_SIZE; k++)
     {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel1.y;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel1.z;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel1.w;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel2.x;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel2.y;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel2.z;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
-    }
-    i = voxel.voxel2.w;
-    if (i != -1 && i != j)
-    {
-        force += CollisionReaction(i, j);
+        const int i = voxel.buffer[k];
+        if (i != EMPTY && i != j)
+        {
+            force += CollisionReaction(i, j);
+        }
     }
 
     return force;
@@ -296,16 +242,16 @@ void CollisionDetectionWithGrid (uint3 id : SV_DispatchThreadID)
 {
     if (!checkParticleActive(id.x)) return;
 
-    float3 force           = CollisionReaction(-1, id.x);
+    float3 force           = CollisionReaction(GROUND_INDEX, id.x);
     const int3 location    = GetParticleGridLocation(id.x);
     const int3 minLocation = location - 1;
     const int3 maxLocation = location + 1;
 
-    for (int x = minLocation.x; x < maxLocation.x; x++)
+    for(int x = minLocation.x; x <= maxLocation.x; x++)
     {
-        for (int y = minLocation.y; y < maxLocation.y; y++)
+        for(int y = minLocation.y; y <= maxLocation.x; y++)
         {
-            for (int z = minLocation.z; z < maxLocation.z; z++)
+            for(int z = minLocation.z; z <= maxLocation.x; z++)
             {
                 force += ForceFromGridCell(id.x, x, y, z);
             }
@@ -322,7 +268,7 @@ void CollisionDetection(uint3 id : SV_DispatchThreadID)
     if (!checkParticleActive(id.x)) return;
 
     float3 force = 0;
-    for (int i = -1; i < particleCount; i++)
+    for(int i = GROUND_INDEX; i < particleCount; i++)
     {
         if (i == (int)id.x) continue;
 
@@ -338,6 +284,7 @@ void CollisionDetection(uint3 id : SV_DispatchThreadID)
 ////////////////////////////
 // Per RigidBdy
 // Use particle forces to compute the force and angular force on the rigid body
+////////////////////////////
 float frictionCoefficient;
 float linearForceScalar;
 float angularFrictionCoefficient;
@@ -359,12 +306,13 @@ void ComputeMomenta(uint3 id : SV_DispatchThreadID)
         angularForce           += cross(particle.offsetPosition, particle.force);
     }
 
-    const float mass = particlesPerBody * particleMass;
-    body.velocity   /= 1 + (frictionCoefficient * deltaTime);
-    body.velocity   += linearForce * mass * linearForceScalar * deltaTime;
+    const float mass = particleMass * particlesPerBody;
 
-    body.angularVelocity /= 1 + (deltaTime * angularFrictionCoefficient);
-    body.angularVelocity += angularForce * angularForceScalar * deltaTime;
+    body.velocity /= 1.0 + (deltaTime * frictionCoefficient);
+    body.velocity += linearForceScalar * deltaTime * linearForce * mass;
+
+    body.angularVelocity /= 1.0 + (deltaTime * angularFrictionCoefficient);
+    body.angularVelocity += angularForceScalar * deltaTime * angularForce;
 
     if (length(body.velocity) < THRESHOLD)
     {
@@ -384,6 +332,7 @@ void ComputeMomenta(uint3 id : SV_DispatchThreadID)
 /////////////////////////////
 // Per RigidBody
 // Use rigidBodyForce and rigidBodyTorque to compute the rigid body position and rotation.
+/////////////////////////////
 [numthreads(RIGIDBODY_THREAD_COUNT, 1, 1)]
 void ComputePositionAndRotation(uint3 id : SV_DispatchThreadID)
 {
@@ -393,7 +342,7 @@ void ComputePositionAndRotation(uint3 id : SV_DispatchThreadID)
     body.position += body.velocity * deltaTime;
 
     const float4 omega = float4(body.angularVelocity, 0);
-    body.rotation      = normalize(body.rotation + (quaternionConcat(omega, body.rotation) / 2) * deltaTime);
+    body.rotation      = normalize(body.rotation + (deltaTime * (quaternionConcat(omega, body.rotation) / 2)));
 
     rigidbodies[id.x] = body;
 }
