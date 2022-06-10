@@ -1,4 +1,4 @@
-﻿Shader "Physics/InstancedRigidBody"
+﻿Shader "Physics/InstancedRigidbody"
 {
     Properties
     {

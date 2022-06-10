@@ -83,7 +83,7 @@ namespace UnityComputeShaders
         public int rigidBodyCount = 1000;
         [Range(1, 20)]
         public int stepsPerUpdate = 10;
-	
+
         // calculated
         private Vector3 cubeScale;
 
@@ -99,7 +99,7 @@ namespace UnityComputeShaders
         private ComputeBuffer argsSphereBuffer;
         private ComputeBuffer argsLineBuffer;
         private ComputeBuffer voxelGridBuffer; // int4
-	
+
         private int kernelGenerateParticleValues;
         private int kernelClearGrid;
         private int kernelPopulateGrid;
@@ -131,15 +131,15 @@ namespace UnityComputeShaders
             InitBuffers();
 
             InitShader();
-		
+
             InitInstancing();
-		
+
         }
 
         private void InitArrays()
         {
             this.particlesPerBody = this.particlesPerEdge * this.particlesPerEdge * this.particlesPerEdge;
-		
+
             this.rigidBodiesArray = new RigidBody[this.rigidBodyCount];
             this.particlesArray = new Particle[this.rigidBodyCount * this.particlesPerBody];
         }
@@ -247,22 +247,22 @@ namespace UnityComputeShaders
             // kernel 0 GenerateParticleValues
             this.shader.SetBuffer(this.kernelGenerateParticleValues, "rigidBodiesBuffer", this.rigidBodiesBuffer);
             this.shader.SetBuffer(this.kernelGenerateParticleValues, "particlesBuffer", this.particlesBuffer);
-		
+
             // kernel 1 ClearGrid
             this.shader.SetBuffer(this.kernelClearGrid, "voxelGridBuffer", this.voxelGridBuffer);
 
             // kernel 2 Populate Grid
             this.shader.SetBuffer(this.kernelPopulateGrid, "voxelGridBuffer", this.voxelGridBuffer);
             this.shader.SetBuffer(this.kernelPopulateGrid, "particlesBuffer", this.particlesBuffer);
-		
+
             // kernel 3 Collision Detection using Grid
             this.shader.SetBuffer(this.kernelCollisionDetectionWithGrid, "particlesBuffer", this.particlesBuffer);
             this.shader.SetBuffer(this.kernelCollisionDetectionWithGrid, "voxelGridBuffer", this.voxelGridBuffer);
-		
+
             // kernel 4 Computation of Momenta
             this.shader.SetBuffer(this.kernelComputeMomenta, "rigidBodiesBuffer", this.rigidBodiesBuffer);
             this.shader.SetBuffer(this.kernelComputeMomenta, "particlesBuffer", this.particlesBuffer);
-		
+
             // kernel 5 Compute Position and Rotation
             this.shader.SetBuffer(this.kernelComputePositionAndRotation, "rigidBodiesBuffer", this.rigidBodiesBuffer);
 
@@ -278,7 +278,7 @@ namespace UnityComputeShaders
             uint[] args = { this.cubeMesh.GetIndexCount(0), 1, 0, 0, 0 };
             this.argsBuffer = new(1, args.Length * sizeof(uint), ComputeBufferType.IndirectArguments);
             this.argsBuffer.SetData(args);
-		
+
             if (this.debugWireframe)
             {
                 int numOfParticles = this.rigidBodyCount * this.particlesPerBody;
@@ -293,7 +293,7 @@ namespace UnityComputeShaders
 
                 this.sphereMaterial.SetBuffer("particlesBuffer", this.particlesBuffer);
                 this.sphereMaterial.SetFloat("scale", this.particleDiameter * 0.5f);
-			
+
                 this.lineMaterial.SetBuffer("particlesBuffer", this.particlesBuffer);
             }
         }

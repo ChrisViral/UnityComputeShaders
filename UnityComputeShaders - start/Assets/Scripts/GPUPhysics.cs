@@ -1,5 +1,4 @@
-﻿using System;
-using CjLib;
+﻿using CjLib;
 using UnityEngine;
 using Random = UnityEngine.Random;
 
@@ -7,22 +6,8 @@ namespace UnityComputeShaders
 {
     public class GPUPhysics : MonoBehaviour
     {
-        private struct Vector4Int
-        {
-            public int x;
-            public int y;
-            public int z;
-            public int w;
-
-            public Vector4Int(int x, int y, int z, int w)
-            {
-                this.x = x;
-                this.y = y;
-                this.z = z;
-                this.w = w;
-            }
-        }
-
+        // ReSharper disable NotAccessedField.Local
+        #pragma warning disable CS0649
         private struct Rigidbody
         {
             public Vector3 position;
@@ -40,18 +25,17 @@ namespace UnityComputeShaders
             public Vector3 localPosition;
             public Vector3 offsetPosition;
         }
-
-        private struct Voxel
-        {
-            public Vector4Int vox1;
-            public Vector4Int vox2;
-        }
+        #pragma warning restore CS0649
+        // ReSharper restore NotAccessedField.Local
 
         private const int RIGIDBODY_STRIDE    = (13 * sizeof(float)) + sizeof(int);
         private const int PARTICLE_STRIDE     = 15 * sizeof(float);
         private const int ARGS_STRIDE         = 5 * sizeof(uint);
         private const int VOXEL_STRIDE        = 8 * sizeof(int);
         private const string GENERATE_KERNEL  = "GenerateParticleValues";
+        private const string CLEAR_KERNEL     = "ClearGrid";
+        private const string POPULATE_KERNEL  = "PopulateGrid";
+        private const string GRID_KERNEL      = "CollisionDetectionWithGrid";
         private const string COLLISION_KERNEL = "CollisionDetection";
         private const string MOMENTA_KERNEL   = "ComputeMomenta";
         private const string COMPUTE_KERNEL   = "ComputePositionAndRotation";
@@ -61,6 +45,9 @@ namespace UnityComputeShaders
         private static readonly int ParticlesBufferID            = Shader.PropertyToID("particles");
         private static readonly int VoxelGridBufferID            = Shader.PropertyToID("voxels");
 
+        private static readonly int GridDimensionsID             = Shader.PropertyToID("gridDimensions");
+        private static readonly int GridMaxID                    = Shader.PropertyToID("gridMax");
+        private static readonly int GridStartPositionID          = Shader.PropertyToID("gridStartPosition");
         private static readonly int ParticleCountID              = Shader.PropertyToID("particleCount");
         private static readonly int ParticlesPerBodyID           = Shader.PropertyToID("particlesPerBody");
         private static readonly int ParticleMassID               = Shader.PropertyToID("particleMass");
@@ -75,21 +62,26 @@ namespace UnityComputeShaders
         private static readonly int AngularForceScalarID         = Shader.PropertyToID("angularForceScalar");
         private static readonly int ActiveCountID                = Shader.PropertyToID("activeCount");
         private static readonly int DeltaTimeID                  = Shader.PropertyToID("deltaTime");
+        private static readonly int ScaleID                      = Shader.PropertyToID("scale");
 
         #region
-        [SerializeField]
+        [SerializeField, Header("Rendering")]
         private ComputeShader shader;
         [SerializeField]
         private Material cubeMaterial;
         [SerializeField]
-        private Bounds bounds;
-        [SerializeField, Range(0.1f, 10f)]
+        private Material sphereMaterial;
+        [SerializeField]
+        private Material lineMaterial;
+        [SerializeField]
+        private bool debugWireframe;
+        [SerializeField, Header("Cube"), Range(0.1f, 10f)]
         private float cubeMass;
         [SerializeField, Range(0.1f, 10f)]
         private float scale;
         [SerializeField, Range(2, 10)]
         private int particlesPerEdge;
-        [SerializeField, Range(0.1f, 10f)]
+        [SerializeField, Header("Coefficients"), Range(0.1f, 10f)]
         private float springCoefficient;
         [SerializeField, Range(0.001f, 2f)]
         private float dampingCoefficient;
@@ -105,13 +97,22 @@ namespace UnityComputeShaders
         private float angularForceScalar;
         [SerializeField, Range(10f, 200f)]
         private float linearForceScalar;
+        [SerializeField, Header("Voxelization")]
+        private bool useGrid = true;
         [SerializeField]
+        private Vector3Int gridSize = new(5, 5, 5);
+        [SerializeField]
+        private Vector3 gridPosition;
+        [SerializeField, Header("Simulation")]
         private int rigidbodyCount = 1000;
         [SerializeField, Range(1, 20)]
         private int stepsPerUpdate = 10;
+        [SerializeField]
+        private Bounds bounds;
 
-        private Mesh mesh;
-        private Vector3 cubeScale;
+        private Mesh cubeMesh;
+        private Mesh sphereMesh;
+        private Mesh lineMesh;
         private int particlesPerBody;
         private float particleDiameter;
         private int activeCount;
@@ -119,26 +120,37 @@ namespace UnityComputeShaders
 
         private Rigidbody[] rigidbodies;
         private Particle[] particles;
-        private readonly uint[] args = new uint[5];
-        private Voxel[] voxels;
         private ComputeBuffer rigidbodiesBuffer;
         private ComputeBuffer particlesBuffer;
-        private ComputeBuffer argsBuffer;
         private ComputeBuffer voxelGridBuffer;
+
+        private readonly uint[] cubeArgs   = new uint[5];
+        private readonly uint[] sphereArgs = new uint[5];
+        private readonly uint[] lineArgs   = new uint[5];
+        private ComputeBuffer argsCubeBuffer;
+        private ComputeBuffer argsSphereBuffer;
+        private ComputeBuffer argsLineBuffer;
 
         private int generateParticleValuesHandle;
         private int collisionDetectionHandle;
         private int computeMomentaHandle;
         private int computePositionAndRotationHandle;
+        private int clearGridHandle;
+        private int collisionDetectionWithGridHandle;
+        private int populateGridHandle;
         private int groupsPerRigidbody;
         private int groupsPerParticle;
+        private int groupsPerGridCell;
+        private int gridTotalSize;
         #endregion
 
         #region Functions
         private void Awake()
         {
             Random.InitState(new System.Random().Next());
-            this.mesh = PrimitiveMeshFactory.BoxFlatShaded();
+            this.cubeMesh     = PrimitiveMeshFactory.BoxFlatShaded();
+            this.sphereMesh   = PrimitiveMeshFactory.SphereWireframe(6, 6);
+            this.lineMesh     = PrimitiveMeshFactory.Line(Vector3.zero, Vector3.one);
         }
 
         private void Start()
@@ -156,14 +168,23 @@ namespace UnityComputeShaders
         {
             this.rigidbodiesBuffer.Release();
             this.particlesBuffer.Release();
-            this.argsBuffer?.Release();
+            this.argsCubeBuffer?.Release();
+            this.argsSphereBuffer?.Release();
+            this.argsLineBuffer?.Release();
             this.voxelGridBuffer?.Release();
         }
 
         private void Update()
         {
-
-            Graphics.DrawMeshInstancedIndirect(this.mesh, 0, this.cubeMaterial, this.bounds, this.argsBuffer);
+            if (this.debugWireframe)
+            {
+                Graphics.DrawMeshInstancedIndirect(this.sphereMesh, 0, this.sphereMaterial, this.bounds, this.argsSphereBuffer);
+                Graphics.DrawMeshInstancedIndirect(this.lineMesh, 0, this.lineMaterial, this.bounds, this.argsLineBuffer);
+            }
+            else
+            {
+                Graphics.DrawMeshInstancedIndirect(this.cubeMesh, 0, this.cubeMaterial, this.bounds, this.argsCubeBuffer);
+            }
         }
 
         private void FixedUpdate()
@@ -174,8 +195,8 @@ namespace UnityComputeShaders
                 this.frameCounter = 0;
                 this.shader.SetInt(ActiveCountID, this.activeCount);
 
-                this.args[1] = (uint)this.activeCount;
-                this.argsBuffer.SetData(this.args);
+                this.cubeArgs[1] = (uint)this.activeCount;
+                this.argsCubeBuffer.SetData(this.cubeArgs);
             }
 
             this.shader.SetFloat(DeltaTimeID, Time.fixedDeltaTime / this.stepsPerUpdate);
@@ -183,7 +204,17 @@ namespace UnityComputeShaders
             for (int i = 0; i < this.stepsPerUpdate; i++)
             {
                 this.shader.Dispatch(this.generateParticleValuesHandle, this.groupsPerRigidbody, 1, 1);
-                this.shader.Dispatch(this.collisionDetectionHandle, this.groupsPerParticle, 1, 1);
+                if (this.useGrid)
+                {
+                    this.shader.Dispatch(this.clearGridHandle, this.groupsPerGridCell, 1, 1);
+                    this.shader.Dispatch(this.populateGridHandle, this.groupsPerParticle, 1, 1);
+                    this.shader.Dispatch(this.collisionDetectionWithGridHandle, this.groupsPerParticle, 1, 1);
+                }
+                else
+                {
+                    this.shader.Dispatch(this.collisionDetectionHandle, this.groupsPerParticle, 1, 1);
+                }
+
                 this.shader.Dispatch(this.computeMomentaHandle, this.groupsPerRigidbody, 1, 1);
                 this.shader.Dispatch(this.computePositionAndRotationHandle, this.groupsPerRigidbody, 1, 1);
             }
@@ -246,11 +277,18 @@ namespace UnityComputeShaders
 
             this.particlesBuffer = new(this.particles.Length, PARTICLE_STRIDE);
             this.particlesBuffer.SetData(this.particles);
+
+
+            this.gridTotalSize = this.gridSize.x * this.gridSize.y * this.gridSize.z;
+            this.voxelGridBuffer = new(this.gridTotalSize, VOXEL_STRIDE);
         }
 
         private void InitKernels()
         {
             this.generateParticleValuesHandle     = this.shader.FindKernel(GENERATE_KERNEL);
+            this.clearGridHandle                  = this.shader.FindKernel(CLEAR_KERNEL);
+            this.populateGridHandle               = this.shader.FindKernel(POPULATE_KERNEL);
+            this.collisionDetectionWithGridHandle = this.shader.FindKernel(GRID_KERNEL);
             this.collisionDetectionHandle         = this.shader.FindKernel(COLLISION_KERNEL);
             this.computeMomentaHandle             = this.shader.FindKernel(MOMENTA_KERNEL);
             this.computePositionAndRotationHandle = this.shader.FindKernel(COMPUTE_KERNEL);
@@ -260,10 +298,18 @@ namespace UnityComputeShaders
 
             this.shader.GetKernelThreadGroupSizes(this.collisionDetectionHandle, out x, out _, out _);
             this.groupsPerParticle = Mathf.CeilToInt(this.particles.Length / (float)x);
+
+            this.shader.GetKernelThreadGroupSizes(this.clearGridHandle, out x, out _, out _);
+            this.groupsPerGridCell = Mathf.CeilToInt(this.gridTotalSize / (float)x);
         }
 
         private void InitShader()
         {
+            Vector3 gridStartPosition = (this.gridPosition * this.particleDiameter) - ((Vector3)this.gridSize * (this.particleDiameter / 2f));
+
+            this.shader.SetInts(GridDimensionsID, this.gridSize.x, this.gridSize.y, this.gridSize.z);
+            this.shader.SetInt(GridMaxID, this.gridTotalSize);
+            this.shader.SetFloats(GridStartPositionID, gridStartPosition.x, gridStartPosition.y, gridStartPosition.z);
             this.shader.SetInt(ParticleCountID, this.particles.Length);
             this.shader.SetInt(ParticlesPerBodyID, this.particlesPerBody);
             this.shader.SetFloat(ParticleMassID, this.cubeMass / this.particlesPerBody);
@@ -279,19 +325,47 @@ namespace UnityComputeShaders
 
             this.shader.SetBuffer(this.generateParticleValuesHandle, RigidBodiesBufferID, this.rigidbodiesBuffer);
             this.shader.SetBuffer(this.generateParticleValuesHandle, ParticlesBufferID, this.particlesBuffer);
-            this.shader.SetBuffer(this.collisionDetectionHandle, ParticlesBufferID, this.particlesBuffer);
+
+            this.shader.SetBuffer(this.clearGridHandle, VoxelGridBufferID, this.voxelGridBuffer);
+
+            this.shader.SetBuffer(this.populateGridHandle, ParticlesBufferID, this.particlesBuffer);
+            this.shader.SetBuffer(this.populateGridHandle, VoxelGridBufferID, this.voxelGridBuffer);
+
+            this.shader.SetBuffer(this.collisionDetectionWithGridHandle, ParticlesBufferID, this.particlesBuffer);
+            this.shader.SetBuffer(this.collisionDetectionWithGridHandle, VoxelGridBufferID, this.voxelGridBuffer);
+
             this.shader.SetBuffer(this.computeMomentaHandle, RigidBodiesBufferID, this.rigidbodiesBuffer);
             this.shader.SetBuffer(this.computeMomentaHandle, ParticlesBufferID, this.particlesBuffer);
+
             this.shader.SetBuffer(this.computePositionAndRotationHandle, RigidBodiesBufferID, this.rigidbodiesBuffer);
+
+            this.shader.SetBuffer(this.collisionDetectionHandle, ParticlesBufferID, this.particlesBuffer);
+            this.shader.SetBuffer(this.collisionDetectionHandle, VoxelGridBufferID, this.voxelGridBuffer);
         }
 
         private void InitInstancing()
         {
             this.cubeMaterial.SetBuffer(RigidBodiesBufferID, this.rigidbodiesBuffer);
 
-            this.args[0] = this.mesh.GetIndexCount(0);
-            this.argsBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
-            this.argsBuffer.SetData(this.args);
+            this.sphereMaterial.SetBuffer(ParticlesBufferID, this.particlesBuffer);
+            this.sphereMaterial.SetFloat(ScaleID, this.particleDiameter / 2f);
+
+            this.lineMaterial.SetBuffer(ParticlesBufferID, this.particlesBuffer);
+
+            this.cubeArgs[0] = this.cubeMesh.GetIndexCount(0);
+            this.cubeArgs[1] = 1u;
+            this.argsCubeBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
+            this.argsCubeBuffer.SetData(this.cubeArgs);
+
+            this.sphereArgs[0] = this.sphereMesh.GetIndexCount(0);
+            this.sphereArgs[1] = (uint)this.particles.Length;
+            this.argsSphereBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
+            this.argsSphereBuffer.SetData(this.sphereArgs);
+
+            this.lineArgs[0] = this.lineMesh.GetIndexCount(0);
+            this.lineArgs[1] = (uint)this.particles.Length;
+            this.argsLineBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
+            this.argsLineBuffer.SetData(this.lineArgs);
         }
         #endregion
     }
