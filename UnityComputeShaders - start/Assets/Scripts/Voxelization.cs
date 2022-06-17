@@ -12,14 +12,13 @@ namespace UnityComputeShaders
 
             // ReSharper disable once LocalVariableHidesMember
             Transform transform = this.transform;
-            Vector3 scale = new(voxelizer.ParticleSize, voxelizer.ParticleSize, voxelizer.ParticleSize);
+            Vector3 scale       = new(voxelizer.ParticleSize, voxelizer.ParticleSize, voxelizer.ParticleSize);
             foreach (Vector3 position in voxelizer.Positions)
             {
                 Transform particle  = GameObject.CreatePrimitive(PrimitiveType.Sphere).transform;
                 particle.position   = position;
                 particle.localScale = scale;
                 particle.parent     = transform;
-
             }
         }
     }
