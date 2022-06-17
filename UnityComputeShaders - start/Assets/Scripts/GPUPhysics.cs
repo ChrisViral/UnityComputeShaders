@@ -64,7 +64,6 @@ namespace UnityComputeShaders
         private static readonly int DeltaTimeID                  = Shader.PropertyToID("deltaTime");
         private static readonly int ScaleID                      = Shader.PropertyToID("scale");
 
-        #region
         [SerializeField, Header("Rendering")]
         private ComputeShader shader;
         [SerializeField]
@@ -142,7 +141,6 @@ namespace UnityComputeShaders
         private int groupsPerParticle;
         private int groupsPerGridCell;
         private int gridTotalSize;
-        #endregion
 
         #region Functions
         private void Awake()
@@ -352,18 +350,18 @@ namespace UnityComputeShaders
 
             this.lineMaterial.SetBuffer(ParticlesBufferID, this.particlesBuffer);
 
-            this.cubeArgs[0] = this.cubeMesh.GetIndexCount(0);
-            this.cubeArgs[1] = 1u;
+            this.cubeArgs[0]    = this.cubeMesh.GetIndexCount(0);
+            this.cubeArgs[1]    = 1u;
             this.argsCubeBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
             this.argsCubeBuffer.SetData(this.cubeArgs);
 
-            this.sphereArgs[0] = this.sphereMesh.GetIndexCount(0);
-            this.sphereArgs[1] = (uint)this.particles.Length;
+            this.sphereArgs[0]    = this.sphereMesh.GetIndexCount(0);
+            this.sphereArgs[1]    = (uint)this.particles.Length;
             this.argsSphereBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
             this.argsSphereBuffer.SetData(this.sphereArgs);
 
-            this.lineArgs[0] = this.lineMesh.GetIndexCount(0);
-            this.lineArgs[1] = (uint)this.particles.Length;
+            this.lineArgs[0]    = this.lineMesh.GetIndexCount(0);
+            this.lineArgs[1]    = (uint)this.particles.Length;
             this.argsLineBuffer = new(1, ARGS_STRIDE, ComputeBufferType.IndirectArguments);
             this.argsLineBuffer.SetData(this.lineArgs);
         }
