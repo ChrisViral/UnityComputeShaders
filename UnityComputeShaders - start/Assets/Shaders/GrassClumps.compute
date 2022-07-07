@@ -1,5 +1,5 @@
 ﻿// Each #kernel tells which function to compile; you can have many kernels
-#define THREADGROUPSIZE 128 
+#define GROUP_SIZE 128
 #pragma kernel LeanGrass
 
 struct GrassClump
@@ -8,16 +8,15 @@ struct GrassClump
     float lean;
     float noise;
 };
-RWStructuredBuffer<GrassClump> clumpsBuffer;
+
+RWStructuredBuffer<GrassClump> clumps;
 float time;
 float maxLean;
 
-[numthreads(THREADGROUPSIZE,1,1)]
-void LeanGrass (uint3 id : SV_DispatchThreadID)
+[numthreads(GROUP_SIZE, 1, 1)]
+void LeanGrass(uint3 id : SV_DispatchThreadID)
 {
-    GrassClump clump = clumpsBuffer[id.x];
-
-    clump.lean = sin(time) * maxLean * clump.noise;
-
-    clumpsBuffer[id.x] = clump;
+    GrassClump clump = clumps[id.x];
+    clump.lean = max(sin(time) * maxLean * clump.noise, maxLean);
+    clumps[id.x] = clump;
 }
